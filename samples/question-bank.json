@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "bank": {
+    "name": "示例数学题库",
+    "subject": "数学"
+  },
+  "questions": [
+    {
+      "type": "single_choice",
+      "stemMarkdown": "方程 $x^2=1$ 的一个负实数解是（ ）。",
+      "options": [
+        { "id": "a", "label": "A", "contentMarkdown": "$x=1$" },
+        { "id": "b", "label": "B", "contentMarkdown": "$x=-1$" }
+      ],
+      "answer": { "kind": "choice", "optionIds": ["b"] },
+      "explanationMarkdown": "$x^2=1$ 的两个解为 $x=\\pm1$。"
+    }
+  ]
+}

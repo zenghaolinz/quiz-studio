@@ -1,0 +1,40 @@
+[package]
+name = "quiz-studio"
+version = "0.1.0"
+description = "Local-first cross-platform quiz application"
+authors = ["Quiz Studio Contributors"]
+edition = "2021"
+
+[lib]
+name = "quiz_studio_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+rusqlite = { version = "0.38", features = ["bundled"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+keyring = { version = "3", default-features = false }
+url = "2"
+encoding_rs = "0.8"
+
+# Platform credential-store backends. keyring 3.x gates native backends behind
+# non-default features; without them set() silently no-ops and get() returns
+# NoEntry, so API keys would never persist. Enable per-target to avoid pulling
+# e.g. dbus on Windows. Mobile platforms need their own SecretStore impl later.
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", default-features = false, features = ["windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", default-features = false, features = ["apple-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", default-features = false, features = ["linux-native-sync-persistent"] }

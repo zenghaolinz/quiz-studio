@@ -1,0 +1,132 @@
+/**
+ * import-core 统一入口。
+ *
+ * 所有文件格式只产出 ImportDraft（内含 QuestionDraft[]），不直接碰正式题库。
+ * convertDraftToQuestionInput 把确认后的草稿转换为正式 CreateQuestionInput，供写入题库。
+ */
+import type { CreateQuestionInput, QuestionOption, AnswerSpec } from "../domain/question";
+import type { ImportDraft } from "./types/question-draft";
+import type { QuestionDraft } from "./types/question-draft";
+import { parseTxt } from "./parsers/txt-parser";
+import { parseMarkdown } from "./parsers/markdown-parser";
+import { validateDrafts } from "./validation/validate-drafts";
+
+export * from "./types/document-block";
+export * from "./types/question-draft";
+export * from "./types/import-warning";
+export { normalizeLine, splitLines, stripBom } from "./normalize/normalize-text";
+export { toHalfWidth } from "./normalize/normalize-symbols";
+export {
+  matchQuestionStart,
+  classifyLine,
+  groupBlocksIntoDrafts,
+  inferType,
+} from "./segmentation/question-boundary";
+export { matchOption, labelToId, generateOptionId } from "./segmentation/option-parser";
+export {
+  matchAnswerMarker,
+  matchExplanationMarker,
+  parseChoiceLabels,
+  parseBoolean,
+  parseAnswerContent,
+} from "./segmentation/answer-parser";
+export { parseTxt } from "./parsers/txt-parser";
+export { parseMarkdown } from "./parsers/markdown-parser";
+export { validateDrafts } from "./validation/validate-drafts";
+
+export interface ParseImportOptions {
+  sourceFileId: string;
+  sourceName?: string;
+}
+
+/** 解析文本为 ImportDraft。sourceType 决定走 TXT 还是 Markdown 管线。 */
+export function parseImport(
+  sourceType: "txt" | "markdown",
+  text: string,
+  options: ParseImportOptions,
+): ImportDraft {
+  const parsed = sourceType === "markdown" ? parseMarkdown(text) : parseTxt(text);
+  const { warnings, hasErrors } = validateDrafts(parsed.questions);
+
+  return {
+    id: crypto.randomUUID(),
+    sourceFileId: options.sourceFileId,
+    sourceName: options.sourceName,
+    sourceType,
+    blocks: parsed.blocks,
+    questions: parsed.questions,
+    warnings,
+    status: hasErrors ? "needs_review" : "needs_review",
+  };
+}
+
+class DraftConversionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DraftConversionError";
+  }
+}
+
+/**
+ * 把已确认的 QuestionDraft 转换为正式 CreateQuestionInput。
+ * unknown 题型或 unknown 答案会抛错——调用前应确保草稿已通过校验/人工确认。
+ */
+export function convertDraftToQuestionInput(
+  draft: QuestionDraft,
+  bankId: string,
+): CreateQuestionInput {
+  if (draft.type === "unknown") {
+    throw new DraftConversionError(`第 ${draft.order + 1} 题题型未知，无法导入`);
+  }
+
+  const options: QuestionOption[] = draft.options.map((o) => ({
+    id: o.id,
+    label: o.label,
+    contentMarkdown: o.contentMarkdown,
+  }));
+
+  let answer: AnswerSpec;
+  switch (draft.answer.kind) {
+    case "choice": {
+      const labelToIdMap = new Map(draft.options.map((o) => [o.label, o.id]));
+      const optionIds = draft.answer.optionLabels
+        .map((l) => labelToIdMap.get(l))
+        .filter((id): id is string => Boolean(id));
+      if (optionIds.length === 0) {
+        throw new DraftConversionError(`第 ${draft.order + 1} 题答案无法对应到选项`);
+      }
+      answer = { kind: "choice", optionIds };
+      break;
+    }
+    case "boolean":
+      answer = { kind: "boolean", value: draft.answer.value };
+      break;
+    case "blank":
+      answer = {
+        kind: "blank",
+        acceptedAnswers: draft.answer.acceptedAnswers,
+        caseSensitive: false,
+      };
+      break;
+    case "subjective":
+      answer = {
+        kind: "subjective",
+        referenceAnswerMarkdown: draft.answer.referenceMarkdown,
+        rubric: [],
+      };
+      break;
+    case "unknown":
+    default:
+      throw new DraftConversionError(`第 ${draft.order + 1} 题答案缺失，无法导入`);
+  }
+
+  return {
+    bankId,
+    type: draft.type,
+    stemMarkdown: draft.stemMarkdown,
+    options,
+    answer,
+    explanationMarkdown: draft.explanationMarkdown,
+    tags: [],
+  };
+}
