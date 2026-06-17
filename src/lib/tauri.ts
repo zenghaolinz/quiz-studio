@@ -13,5 +13,5 @@ export async function invokeCommand<T>(
 }
 
 export function isTauriRuntime(): boolean {
-  return "__TAURI_INTERNALS__" in window;
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }

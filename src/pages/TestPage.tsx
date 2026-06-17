@@ -36,7 +36,7 @@ export function TestPage() {
         <span className="eyebrow">自测模式</span>
         <h3>提交后统一评分</h3>
         <p>客观题本地计分；主观题可按参考答案和评分点交给 AI 批改。</p>
-        <button type="button" className="primary-button full-width">提交整套试卷</button>
+        <button type="button" className="primary-button full-width" disabled title="真实自测会话尚未接入">提交整套试卷（开发中）</button>
       </aside>
     </div>
   );

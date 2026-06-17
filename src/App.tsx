@@ -34,7 +34,9 @@ export default function App() {
   return (
     <AppShell page={page} onPageChange={setPage}>
       <Suspense fallback={<PageLoading />}>
-        {page === "dashboard" ? <DashboardPage /> : null}
+        {page === "dashboard" ? (
+          <DashboardPage onImport={() => setPage("import")} onCreateBank={() => setPage("banks")} />
+        ) : null}
         {page === "banks" ? <BanksPageModule onOpenBank={openBank} /> : null}
         {page === "bank-detail" && selectedBank ? (
           <BankDetailPageModule bank={selectedBank} onBack={() => setPage("banks")} onPractice={startPractice} />

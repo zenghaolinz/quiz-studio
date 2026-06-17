@@ -10,19 +10,21 @@ interface PracticePageProps {
   bankName?: string;
 }
 
-type Submitted = Record<string, unknown>;
+type ResponseMap = Record<string, unknown>;
 
 /**
- * 刷题模式：读真实题库，逐题作答，选中即判定（即时反馈）。
- * 客观题用 scoreObjectiveAnswer；主观题仅显示参考答案。
- * 作答仅存内存（持久化留 v0.3），但题库重启后仍在。
+ * 刷题模式：
+ * - 单选/判断：选中后立即判定；
+ * - 多选/填空：编辑完成后点击“确认答案”；
+ * - 主观题：保留答题框，可手动显示参考答案。
  */
 export function PracticePage({ bankId, bankName }: PracticePageProps) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
-  const [submitted, setSubmitted] = useState<Submitted>({});
+  const [responses, setResponses] = useState<ResponseMap>({});
+  const [submitted, setSubmitted] = useState<ResponseMap>({});
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -33,6 +35,7 @@ export function PracticePage({ bankId, bankName }: PracticePageProps) {
       .then((qs) => {
         setQuestions(qs);
         setIndex(0);
+        setResponses({});
         setSubmitted({});
         setRevealed({});
       })
@@ -42,8 +45,7 @@ export function PracticePage({ bankId, bankName }: PracticePageProps) {
 
   const current = questions[index];
   const result = useMemo(() => {
-    if (!current) return null;
-    if (current.answer.kind === "subjective") return null;
+    if (!current || current.answer.kind === "subjective") return null;
     const response = submitted[current.id];
     if (response === undefined) return null;
     return scoreObjectiveAnswer(current.answer as AnswerSpec, response, current.maxScore);
@@ -60,21 +62,46 @@ export function PracticePage({ bankId, bankName }: PracticePageProps) {
   if (!current) return null;
 
   const isChoice = current.answer.kind === "choice";
+  const isMultiple = current.type === "multiple_choice" && isChoice;
   const isBoolean = current.answer.kind === "boolean";
+  const isBlank = current.answer.kind === "blank";
   const isSubjective = current.answer.kind === "subjective";
+  const currentResponse = responses[current.id];
 
   function chooseChoice(optionId: string) {
-    if (!current) return;
-    if (current.answer.kind !== "choice") return;
-    if (result) return; // 已判定，锁定
+    if (!current || current.answer.kind !== "choice" || result) return;
     if (current.type === "multiple_choice") {
-      const prev = (submitted[current.id] as string[] | undefined) ?? [];
-      const next = prev.includes(optionId) ? prev.filter((x) => x !== optionId) : [...prev, optionId];
-      setSubmitted((s) => ({ ...s, [current.id]: next }));
-    } else {
-      setSubmitted((s) => ({ ...s, [current.id]: [optionId] }));
+      const previous = Array.isArray(currentResponse) ? currentResponse.filter((v): v is string => typeof v === "string") : [];
+      const next = previous.includes(optionId)
+        ? previous.filter((value) => value !== optionId)
+        : [...previous, optionId];
+      setResponses((state) => ({ ...state, [current.id]: next }));
+      return;
     }
+
+    const next = [optionId];
+    setResponses((state) => ({ ...state, [current.id]: next }));
+    setSubmitted((state) => ({ ...state, [current.id]: next }));
   }
+
+  function submitCurrentResponse() {
+    if (!current || result || currentResponse === undefined) return;
+    setSubmitted((state) => ({ ...state, [current.id]: currentResponse }));
+  }
+
+  function setBlank(indexToUpdate: number, value: string) {
+    if (!current || current.answer.kind !== "blank" || result) return;
+    const count = current.answer.acceptedAnswers.length;
+    const previous = Array.isArray(currentResponse)
+      ? Array.from({ length: count }, (_, i) => String(currentResponse[i] ?? ""))
+      : Array.from({ length: count }, () => "");
+    previous[indexToUpdate] = value;
+    setResponses((state) => ({ ...state, [current.id]: previous }));
+  }
+
+  const selectedChoiceIds = Array.isArray(currentResponse)
+    ? currentResponse.filter((value): value is string => typeof value === "string")
+    : [];
 
   return (
     <div className="question-layout">
@@ -85,75 +112,163 @@ export function PracticePage({ bankId, bankName }: PracticePageProps) {
         </div>
         <MarkdownContent>{current.stemMarkdown}</MarkdownContent>
 
-        <div className="option-list">
-          {current.options.map((o) => {
-            const chosen = isChoice && Array.isArray(submitted[current.id]) && (submitted[current.id] as string[]).includes(o.id);
-            const correctOpt = result && current.answer.kind === "choice" && (current.answer as { optionIds: string[] }).optionIds.includes(o.id);
-            const wrong = result && chosen && !correctOpt;
-            return (
-              <button type="button" key={o.id}
-                className={`option ${chosen ? "selected" : ""} ${correctOpt ? "correct" : ""} ${wrong ? "wrong" : ""}`}
-                disabled={!!result} onClick={() => chooseChoice(o.id)}>
-                <span>{o.label}</span><MarkdownContent>{o.contentMarkdown}</MarkdownContent>
+        {isChoice ? (
+          <div className="option-list">
+            {current.options.map((option) => {
+              const chosen = selectedChoiceIds.includes(option.id);
+              const correctOption = Boolean(
+                result && current.answer.kind === "choice" && current.answer.optionIds.includes(option.id),
+              );
+              const wrong = Boolean(result && chosen && !correctOption);
+              return (
+                <button
+                  type="button"
+                  key={option.id}
+                  className={`option ${chosen ? "selected" : ""} ${correctOption ? "correct" : ""} ${wrong ? "wrong" : ""}`}
+                  disabled={Boolean(result)}
+                  onClick={() => chooseChoice(option.id)}
+                >
+                  <span>{option.label}</span>
+                  <MarkdownContent>{option.contentMarkdown}</MarkdownContent>
+                </button>
+              );
+            })}
+            {isMultiple ? (
+              <button
+                type="button"
+                className="primary-button"
+                disabled={Boolean(result) || selectedChoiceIds.length === 0}
+                onClick={submitCurrentResponse}
+              >
+                确认答案
               </button>
-            );
-          })}
-        </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {isBoolean ? (
           <div className="option-list">
-            {[true, false].map((v) => {
-              const chosen = submitted[current.id] === v;
-              const correct = result && current.answer.kind === "boolean" && (current.answer as { value: boolean }).value === v;
-              const wrong = result && chosen && !correct;
+            {[true, false].map((value) => {
+              const chosen = currentResponse === value;
+              const correct = Boolean(result && current.answer.kind === "boolean" && current.answer.value === value);
+              const wrong = Boolean(result && chosen && !correct);
               return (
-                <button type="button" key={String(v)} disabled={!!result}
+                <button
+                  type="button"
+                  key={String(value)}
+                  disabled={Boolean(result)}
                   className={`option ${chosen ? "selected" : ""} ${correct ? "correct" : ""} ${wrong ? "wrong" : ""}`}
-                  onClick={() => !result && setSubmitted((s) => ({ ...s, [current.id]: v }))}>
-                  <span>{v ? "对" : "错"}</span>
+                  onClick={() => {
+                    if (result) return;
+                    setResponses((state) => ({ ...state, [current.id]: value }));
+                    setSubmitted((state) => ({ ...state, [current.id]: value }));
+                  }}
+                >
+                  <span>{value ? "对" : "错"}</span>
                 </button>
               );
             })}
           </div>
         ) : null}
 
-        {result ? (
-          <div className={result.correct ? "answer-panel success-panel" : "answer-panel error-panel"}>
-            <strong>{result.correct ? "回答正确" : "回答错误"}</strong>
-            {current.explanationMarkdown ? <MarkdownContent>{current.explanationMarkdown}</MarkdownContent> : <p>（本题无解析）</p>}
+        {isBlank && current.answer.kind === "blank" ? (
+          <div className="form-stack">
+            {current.answer.acceptedAnswers.map((_, blankIndex) => {
+              const values = Array.isArray(currentResponse) ? currentResponse : [];
+              return (
+                <label className="field-label" key={blankIndex}>
+                  第 {blankIndex + 1} 空
+                  <input
+                    value={String(values[blankIndex] ?? "")}
+                    disabled={Boolean(result)}
+                    onChange={(event) => setBlank(blankIndex, event.target.value)}
+                    placeholder="输入答案"
+                  />
+                </label>
+              );
+            })}
+            <button
+              type="button"
+              className="primary-button"
+              disabled={
+                Boolean(result) ||
+                !Array.isArray(currentResponse) ||
+                currentResponse.some((value) => !String(value).trim())
+              }
+              onClick={submitCurrentResponse}
+            >
+              确认答案
+            </button>
           </div>
         ) : null}
 
-        {isSubjective ? (
-          <div className="answer-actions">
-            <button type="button" className="secondary-button"
-              onClick={() => setRevealed((r) => ({ ...r, [current.id]: !r[current.id] }))}>
+        {isSubjective && current.answer.kind === "subjective" ? (
+          <div className="answer-actions subjective-answer-area">
+            <textarea
+              className="answer-textarea"
+              rows={8}
+              value={typeof currentResponse === "string" ? currentResponse : ""}
+              onChange={(event) => setResponses((state) => ({ ...state, [current.id]: event.target.value }))}
+              placeholder="在此输入你的答案……"
+            />
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setRevealed((state) => ({ ...state, [current.id]: !state[current.id] }))}
+            >
               {revealed[current.id] ? "隐藏参考答案" : "显示参考答案"}
             </button>
-            {revealed[current.id] && current.answer.kind === "subjective" ? (
+            {revealed[current.id] ? (
               <div className="answer-panel warning-panel">
                 <strong>参考答案</strong>
-                <MarkdownContent>{(current.answer as { referenceAnswerMarkdown: string }).referenceAnswerMarkdown}</MarkdownContent>
+                <MarkdownContent>{current.answer.referenceAnswerMarkdown}</MarkdownContent>
               </div>
             ) : null}
           </div>
         ) : null}
 
+        {result ? (
+          <div className={result.correct ? "answer-panel success-panel" : "answer-panel error-panel"}>
+            <strong>{result.correct ? "回答正确" : "回答错误"}</strong>
+            {!result.correct ? <p><b>正确答案：</b>{formatCorrectAnswer(current)}</p> : null}
+            {current.explanationMarkdown
+              ? <MarkdownContent>{current.explanationMarkdown}</MarkdownContent>
+              : <p>（本题无解析）</p>}
+          </div>
+        ) : null}
+
         <div className="question-nav">
-          <button type="button" className="ghost-button" disabled={index === 0} onClick={() => setIndex((i) => i - 1)}>上一题</button>
-          <button type="button" className="primary-button" disabled={index === questions.length - 1} onClick={() => setIndex((i) => i + 1)}>下一题</button>
+          <button type="button" className="ghost-button" disabled={index === 0} onClick={() => setIndex((value) => value - 1)}>上一题</button>
+          <button type="button" className="primary-button" disabled={index === questions.length - 1} onClick={() => setIndex((value) => value + 1)}>下一题</button>
         </div>
       </section>
 
       <aside className="question-side-panel">
         <span className="eyebrow">刷题模式</span>
         <h3>{bankName ?? "即时反馈"}</h3>
-        <p>选中答案后立即判定，显示标准答案与解析。</p>
+        <p>单选和判断即时判定；多选与填空确认后判定。</p>
         <div className="progress-track"><span style={{ width: `${((index + 1) / questions.length) * 100}%` }} /></div>
         <small>第 {index + 1} / {questions.length} 题</small>
       </aside>
     </div>
   );
+}
+
+function formatCorrectAnswer(question: Question): string {
+  switch (question.answer.kind) {
+    case "choice":
+      return question.answer.optionIds
+        .map((id) => question.options.find((option) => option.id === id)?.label ?? id)
+        .join("、");
+    case "boolean":
+      return question.answer.value ? "对" : "错";
+    case "blank":
+      return question.answer.acceptedAnswers
+        .map((answers) => answers.join(" / "))
+        .join("；");
+    case "subjective":
+      return question.answer.referenceAnswerMarkdown;
+  }
 }
 
 const TYPE_LABEL: Record<string, string> = {

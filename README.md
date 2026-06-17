@@ -12,6 +12,8 @@
 - Tesseract.js 基础 OCR 页面
 - GLM-OCR SDK 服务与 OpenAI-compatible 两种接入适配器
 - 系统密钥存储适配器，API Key 不写入 SQLite
+- TXT/Markdown 规则切题、导入预览修正与批量写库
+- 浏览器开发模式下使用 localStorage 验证完整导入链路
 - 题库、刷题、自测、OCR、设置的基础界面
 
 ## 环境要求
@@ -33,7 +35,18 @@ npm run tauri:dev
 npm run dev
 ```
 
-浏览器预览会使用演示题库，SQLite、密钥保存和 GLM-OCR 调用需要 Tauri 运行时。
+浏览器预览会使用 localStorage 保存开发数据，TXT/Markdown 导入、题库管理和刷题均可验证；SQLite、系统密钥保存和 GLM-OCR 调用仍需要 Tauri 运行时。
+
+
+## 已修复的导入交互问题
+
+- 修复导入草稿 reducer 无法处理首次 `load`，导致编辑、删除、选择答案等操作全部无效。
+- 浏览器开发模式不再禁用“选择文件”，并增加本地题库仓库。
+- 修复填空题在编辑后被错误保存为主观题答案。
+- 修复删除选项后正确答案标签错位。
+- 修复多选题选择第一个选项就立即判分的问题。
+
+详见 `docs/FIX_REPORT.md`。
 
 ## 配置 GLM-OCR
 
@@ -52,8 +65,8 @@ Model: glm-ocr
 
 这不是完整产品。以下内容只有接口或数据库预留，尚未完成：
 
-- DOCX/PDF/TXT/MD 完整导入器
-- 自动切题和导入校正工作台
+- DOCX/PDF/图片导入器
+- 更复杂的答案集中式题库、表格题库与组合题切分
 - GLM-OCR 模型下载与 sidecar 生命周期管理
 - AI 生成解析和主观题评分
 - 完整测试会话持久化

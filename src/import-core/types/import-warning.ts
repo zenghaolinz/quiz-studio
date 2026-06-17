@@ -17,6 +17,7 @@ export interface ImportWarning {
     | "ambiguous_type"
     | "option_mismatch"
     | "answer_option_missing"
+    | "answer_type_mismatch"
     | "empty_stem"
     | "no_questions"
     | "parse_error"

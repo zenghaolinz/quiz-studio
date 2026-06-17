@@ -24,6 +24,7 @@ interface QuestionDraftEditorProps {
     removeOption: (order: number, optionId: string) => void;
     setChoiceAnswer: (order: number, optionLabels: string[]) => void;
     setBooleanAnswer: (order: number, value: boolean) => void;
+    setBlankAnswer: (order: number, value: string) => void;
     setSubjectiveAnswer: (order: number, markdown: string) => void;
     removeQuestion: (order: number) => void;
     splitQuestion: (order: number, blockIndex: number) => void;
@@ -40,7 +41,8 @@ export function QuestionDraftEditor({ draft, expanded, onToggle, actions }: Ques
   const hasErrors = draft.warnings.length > 0;
   const isChoiceLike = draft.type === "single_choice" || draft.type === "multiple_choice";
   const isBoolean = draft.type === "true_false";
-  const isSubjective = draft.type === "short_answer" || draft.type === "essay" || draft.type === "fill_blank";
+  const isBlank = draft.type === "fill_blank";
+  const isSubjective = draft.type === "short_answer" || draft.type === "essay";
 
   return (
     <article className={`draft-card ${hasErrors ? "has-warnings" : ""} ${expanded ? "expanded" : ""}`}>
@@ -114,6 +116,20 @@ export function QuestionDraftEditor({ draft, expanded, onToggle, actions }: Ques
             </div>
           ) : null}
 
+          {isBlank ? (
+            <label className="field-label">填空答案
+              <textarea
+                className="draft-textarea"
+                rows={2}
+                placeholder="多个空使用分号分隔，例如：ATP；线粒体"
+                value={draft.answer.kind === "blank"
+                  ? draft.answer.acceptedAnswers.map((answers) => answers[0] ?? "").join("；")
+                  : ""}
+                onChange={(e) => actions.setBlankAnswer(order, e.target.value)}
+              />
+            </label>
+          ) : null}
+
           {isSubjective ? (
             <label className="field-label">参考答案
               <textarea className="draft-textarea" rows={2}
@@ -139,10 +155,14 @@ export function QuestionDraftEditor({ draft, expanded, onToggle, actions }: Ques
           </div>
 
           <div className="draft-card-actions">
-            {draft.sourceRange ? (
-              <button type="button" className="text-button"
-                onClick={() => actions.splitQuestion(order, draft.sourceRange!.startBlock + 1)}>
-                拆分题目
+            {draft.sourceRange && draft.sourceRange.endBlock > draft.sourceRange.startBlock ? (
+              <button
+                type="button"
+                className="text-button"
+                title="在当前题第一行后拆分，拆分后请人工检查两道题"
+                onClick={() => actions.splitQuestion(order, draft.sourceRange!.startBlock + 1)}
+              >
+                在首行后拆分
               </button>
             ) : null}
             <button type="button" className="text-button danger" onClick={() => actions.removeQuestion(order)}>删除此题</button>

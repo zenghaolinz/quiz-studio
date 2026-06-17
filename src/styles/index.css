@@ -225,3 +225,7 @@ input:focus, textarea:focus { border-color: #8290e3; box-shadow: 0 0 0 3px rgba(
   .import-split { grid-template-columns: 1fr; }
   .source-preview { position: static; max-height: 320px; }
 }
+
+/* 刷题页主观题区域应纵向排列，避免答题框被按钮挤压。 */
+.subjective-answer-area { display: grid; align-items: stretch; gap: 12px; }
+.subjective-answer-area .answer-textarea { margin-top: 0; }

@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ImportDraft } from "../../../import-core/types/question-draft";
 import { convertDraftToQuestionInput, validateDrafts } from "../../../import-core";
-import { listQuestionBanks, createQuestionBank, createQuestionsBatch } from "../../../features/banks/api";
+import {
+  listQuestionBanks,
+  createQuestionBank,
+  createQuestionsBatch,
+  deleteQuestionBank,
+} from "../../../features/banks/api";
 import type { QuestionBank } from "../../../domain/question";
 import { SourcePreview } from "../components/SourcePreview";
 import { QuestionDraftEditor } from "../components/QuestionDraftEditor";
@@ -15,11 +20,11 @@ interface ImportReviewPageProps {
 }
 
 export function ImportReviewPage({ draft, onCancel, onImported }: ImportReviewPageProps) {
-  const { state, actions } = useImportStore();
-  // 草稿载入：每次收到新草稿（id 不同）时载入
+  const { state, actions } = useImportStore(draft);
+  // 页面复用且收到另一份草稿时重新载入；同一草稿编辑过程中不会被重置。
   useEffect(() => {
-    actions.load(draft);
-  }, [draft, actions]);
+    if (state.draft?.id !== draft.id) actions.load(draft);
+  }, [draft, state.draft?.id, actions]);
   const current = state.draft ?? draft;
   const [banks, setBanks] = useState<QuestionBank[]>([]);
   const [targetBankId, setTargetBankId] = useState<string>("");
@@ -51,25 +56,44 @@ export function ImportReviewPage({ draft, onCancel, onImported }: ImportReviewPa
       setError("存在错误级告警，请先修正后再导入。");
       return;
     }
+
+    const requestedNewBankName = newBankName.trim();
+    if (!targetBankId && !requestedNewBankName) {
+      setError("请选择目标题库或输入新题库名称。");
+      return;
+    }
+
     setImporting(true);
+    let createdBankId: string | null = null;
     try {
-      // 确定目标题库
+      // 在创建新题库之前先完成全部草稿转换，避免转换失败时留下空题库。
+      const provisionalBankId = targetBankId || "__pending_new_bank__";
+      const prepared = current.questions.map((question) =>
+        convertDraftToQuestionInput(question, provisionalBankId),
+      );
+
       let bankId = targetBankId;
-      if (!bankId && newBankName.trim()) {
-        const bank = await createQuestionBank({ name: newBankName.trim(), subject: "导入" });
-        bankId = bank.id;
-      }
       if (!bankId) {
-        setError("请选择目标题库或输入新题库名称。");
-        setImporting(false);
-        return;
+        const bank = await createQuestionBank({
+          name: requestedNewBankName,
+          subject: "导入",
+        });
+        bankId = bank.id;
+        createdBankId = bank.id;
       }
 
-      const inputs = current.questions.map((q) => convertDraftToQuestionInput(q, bankId!));
-      const count = await createQuestionsBatch(bankId, inputs);
-      void count;
+      const inputs = prepared.map((question) => ({ ...question, bankId }));
+      await createQuestionsBatch(bankId, inputs);
       onImported(bankId);
     } catch (caught) {
+      // 桌面端批量题目写入本身是事务；若本次流程刚创建了题库，则失败时清理空库。
+      if (createdBankId) {
+        try {
+          await deleteQuestionBank(createdBankId);
+        } catch {
+          // 保留原始错误；清理失败的空库可由用户在题库页手动删除。
+        }
+      }
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setImporting(false);

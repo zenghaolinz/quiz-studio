@@ -19,6 +19,7 @@ export function BanksPage({ onOpenBank }: BanksPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -38,10 +39,19 @@ export function BanksPage({ onOpenBank }: BanksPageProps) {
 
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
-    if (!name.trim()) return;
-    const bank = await createQuestionBank({ name: name.trim(), subject: "未分类" });
-    setBanks((current) => [bank, ...current]);
-    setName("");
+    const trimmed = name.trim();
+    if (!trimmed || creating) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const bank = await createQuestionBank({ name: trimmed, subject: "未分类" });
+      setBanks((current) => [bank, ...current.filter((item) => item.id !== bank.id)]);
+      setName("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setCreating(false);
+    }
   }
 
   async function handleDelete(id: string) {
@@ -62,7 +72,9 @@ export function BanksPage({ onOpenBank }: BanksPageProps) {
         </div>
         <form className="inline-form" onSubmit={handleCreate}>
           <input value={name} onChange={(event) => setName(event.target.value)} placeholder="输入题库名称" aria-label="题库名称" />
-          <button type="submit" className="primary-button">新建题库</button>
+          <button type="submit" className="primary-button" disabled={creating || !name.trim()}>
+            {creating ? "正在创建…" : "新建题库"}
+          </button>
         </form>
       </section>
 

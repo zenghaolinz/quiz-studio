@@ -10,7 +10,12 @@ $$
 \ce{2H2 + O2 -> 2H2O}
 $$`;
 
-export function DashboardPage() {
+interface DashboardPageProps {
+  onImport: () => void;
+  onCreateBank: () => void;
+}
+
+export function DashboardPage({ onImport, onCreateBank }: DashboardPageProps) {
   return (
     <div className="page-stack">
       <section className="hero-card">
@@ -18,11 +23,11 @@ export function DashboardPage() {
           <span className="pill">本地优先 · AI 可选</span>
           <h2>把题库导入、练习、自测和解析放进一个安静的工作台。</h2>
           <p>
-            当前骨架已接通 Tauri 命令层、SQLite 数据模型、基础评分以及两级 OCR 接口。
+            当前版本已接通 Tauri 命令层、SQLite 数据模型、基础评分以及文本题库导入。
           </p>
           <div className="button-row">
-            <button type="button" className="primary-button">导入第一份题库</button>
-            <button type="button" className="secondary-button">创建空白题库</button>
+            <button type="button" className="primary-button" onClick={onImport}>导入第一份题库</button>
+            <button type="button" className="secondary-button" onClick={onCreateBank}>创建空白题库</button>
           </div>
         </div>
         <div className="hero-metric-grid">
@@ -43,12 +48,12 @@ export function DashboardPage() {
         </section>
         <section className="panel">
           <div className="panel-heading">
-            <div><span className="eyebrow">下一步</span><h3>首个纵向切片</h3></div>
+            <div><span className="eyebrow">当前流程</span><h3>文本题库导入</h3></div>
           </div>
           <ol className="timeline-list">
-            <li><span>1</span><div><strong>导入一张题目图片</strong><p>先用基础 OCR 或 GLM-OCR 得到 Markdown。</p></div></li>
+            <li><span>1</span><div><strong>选择 TXT 或 Markdown</strong><p>读取文件并按题号、选项、答案标记切题。</p></div></li>
             <li><span>2</span><div><strong>修正结构</strong><p>确认题干、选项、答案与解析。</p></div></li>
-            <li><span>3</span><div><strong>写入题库</strong><p>保存到 SQLite，进入刷题模式。</p></div></li>
+            <li><span>3</span><div><strong>写入题库</strong><p>保存后可直接进入刷题模式。</p></div></li>
           </ol>
         </section>
       </div>

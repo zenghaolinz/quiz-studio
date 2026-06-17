@@ -1,11 +1,16 @@
 /**
  * 导入草稿编辑状态。
  *
- * 不引入外部状态库，用 useReducer 管理 ImportDraft 的不可变编辑：
- * 改题型/题干/选项/答案、拆题、合题、删题。所有操作纯函数化，便于测试与回放。
+ * 不引入外部状态库，用 useReducer 管理 ImportDraft 的不可变编辑。
  */
 import { useMemo, useReducer } from "react";
-import type { DraftAnswer, DraftOption, ImportDraft, QuestionDraft, QuestionDraftType } from "../../../import-core/types/question-draft";
+import type {
+  DraftAnswer,
+  DraftOption,
+  ImportDraft,
+  QuestionDraft,
+  QuestionDraftType,
+} from "../../../import-core/types/question-draft";
 import { generateOptionId } from "../../../import-core/segmentation/option-parser";
 
 export interface ImportState {
@@ -26,6 +31,7 @@ export type ImportAction =
   | { type: "remove_option"; order: number; optionId: string }
   | { type: "set_choice_answer"; order: number; optionLabels: string[] }
   | { type: "set_boolean_answer"; order: number; value: boolean }
+  | { type: "set_blank_answer"; order: number; value: string }
   | { type: "set_subjective_answer"; order: number; markdown: string }
   | { type: "remove_question"; order: number }
   | { type: "split_question"; order: number; blockIndex: number };
@@ -41,15 +47,40 @@ function updateQuestion(
   };
 }
 
+function nextOptionLabel(options: DraftOption[]): string {
+  const used = new Set(options.map((option) => option.label.toUpperCase()));
+  for (let code = "A".charCodeAt(0); code <= "Z".charCodeAt(0); code += 1) {
+    const label = String.fromCharCode(code);
+    if (!used.has(label)) return label;
+  }
+  return String.fromCharCode("A".charCodeAt(0) + options.length);
+}
+
+function normalizeQuestionOrders(questions: QuestionDraft[]): QuestionDraft[] {
+  return questions.map((question, index) => ({
+    ...question,
+    order: index,
+    id: `q-${index}`,
+  }));
+}
+
 export function importReducer(state: ImportState, action: ImportAction): ImportState {
+  // load/clear 必须在空草稿保护之前处理。旧实现先 `if (!draft) return state`，
+  // 导致初始 load 永远被吞掉，之后所有编辑按钮都变成无效操作。
+  if (action.type === "load") {
+    return {
+      draft: action.draft,
+      selectedOrder: action.draft.questions[0]?.order ?? null,
+    };
+  }
+  if (action.type === "clear") {
+    return { draft: null, selectedOrder: null };
+  }
+
   const draft = state.draft;
   if (!draft) return state;
 
   switch (action.type) {
-    case "load":
-      return { draft: action.draft, selectedOrder: action.draft.questions[0]?.order ?? null };
-    case "clear":
-      return { draft: null, selectedOrder: null };
     case "select":
       return { ...state, selectedOrder: action.order };
 
@@ -76,10 +107,9 @@ export function importReducer(state: ImportState, action: ImportAction): ImportS
       return {
         ...state,
         draft: updateQuestion(draft, action.order, (q) => {
-          const nextLabel = String.fromCharCode("A".charCodeAt(0) + q.options.length);
           const option: DraftOption = {
             id: generateOptionId(q.options),
-            label: nextLabel,
+            label: nextOptionLabel(q.options),
             contentMarkdown: "",
           };
           return { ...q, options: [...q.options, option] };
@@ -99,18 +129,31 @@ export function importReducer(state: ImportState, action: ImportAction): ImportS
       return {
         ...state,
         draft: updateQuestion(draft, action.order, (q) => {
-          const options = q.options.filter((o) => o.id !== action.optionId);
-          // 重新分配 label（A,B,C…），保持 id 不变
-          const relabeled = options.map((o, i) => ({
-            ...o,
-            label: String.fromCharCode("A".charCodeAt(0) + i),
-          }));
-          // 若答案引用了被删选项，清理
+          // 答案先从 label 转成稳定 option id，再重排 label，避免删除 B 后原 C 答案丢失。
+          const answerOptionIds =
+            q.answer.kind === "choice"
+              ? new Set(
+                  q.options
+                    .filter((option) => q.answer.kind === "choice" && q.answer.optionLabels.includes(option.label))
+                    .map((option) => option.id),
+                )
+              : new Set<string>();
+
+          const relabeled = q.options
+            .filter((o) => o.id !== action.optionId)
+            .map((o, i) => ({
+              ...o,
+              label: String.fromCharCode("A".charCodeAt(0) + i),
+            }));
+
           let answer: DraftAnswer = q.answer;
-          if (answer.kind === "choice") {
-            const valid = new Set(relabeled.map((o) => o.label));
-            const kept = answer.optionLabels.filter((l) => valid.has(l));
-            answer = kept.length > 0 ? { kind: "choice", optionLabels: kept } : { kind: "unknown" };
+          if (q.answer.kind === "choice") {
+            const labels = relabeled
+              .filter((option) => answerOptionIds.has(option.id))
+              .map((option) => option.label);
+            answer = labels.length > 0
+              ? { kind: "choice", optionLabels: labels }
+              : { kind: "unknown" };
           }
           return { ...q, options: relabeled, answer };
         }),
@@ -135,31 +178,50 @@ export function importReducer(state: ImportState, action: ImportAction): ImportS
           answer: { kind: "boolean", value: action.value },
         })),
       };
+    case "set_blank_answer":
+      return {
+        ...state,
+        draft: updateQuestion(draft, action.order, (q) => {
+          const blanks = action.value
+            .split(/[;；]/)
+            .map((value) => value.trim())
+            .filter(Boolean)
+            .map((value) => [value]);
+          return {
+            ...q,
+            answer: blanks.length > 0
+              ? { kind: "blank", acceptedAnswers: blanks }
+              : { kind: "unknown" },
+          };
+        }),
+      };
     case "set_subjective_answer":
       return {
         ...state,
         draft: updateQuestion(draft, action.order, (q) => ({
           ...q,
-          answer: action.markdown
+          answer: action.markdown.trim()
             ? { kind: "subjective", referenceMarkdown: action.markdown }
             : { kind: "unknown" },
         })),
       };
 
     case "remove_question": {
-      const remaining = draft.questions
-        .filter((q) => q.order !== action.order)
-        .map((q, i) => ({ ...q, order: i, id: `q-${i}` }));
+      const remaining = normalizeQuestionOrders(
+        draft.questions.filter((q) => q.order !== action.order),
+      );
+      const selectedOrder =
+        remaining.length === 0
+          ? null
+          : Math.min(action.order, remaining.length - 1);
       return {
         ...state,
-        selectedOrder: remaining[0]?.order ?? null,
+        selectedOrder,
         draft: { ...draft, questions: remaining },
       };
     }
 
     case "split_question": {
-      // 最小可用拆分：把指定题从 sourceRange 的 blockIndex 处切开，
-      // 原题保留 [start, blockIndex)，新题接管 [blockIndex, end]。
       const idx = draft.questions.findIndex((q) => q.order === action.order);
       if (idx < 0) return state;
       const src = draft.questions[idx];
@@ -171,7 +233,11 @@ export function importReducer(state: ImportState, action: ImportAction): ImportS
         id: `q-split-${src.order}`,
         order: src.order + 1,
         type: "unknown",
-        stemMarkdown: "",
+        stemMarkdown: draft.blocks
+          .filter((block) => block.index >= action.blockIndex && block.index <= range.endBlock)
+          .map((block) => block.text)
+          .join("\n")
+          .trim(),
         options: [],
         answer: { kind: "unknown" },
         confidence: 1,
@@ -182,13 +248,17 @@ export function importReducer(state: ImportState, action: ImportAction): ImportS
         ...src,
         sourceRange: { startBlock: range.startBlock, endBlock: action.blockIndex - 1 },
       };
-      const newQuestions = [
+      const newQuestions = normalizeQuestionOrders([
         ...draft.questions.slice(0, idx),
         updatedSrc,
         newQ,
         ...draft.questions.slice(idx + 1),
-      ].map((q, i) => ({ ...q, order: i, id: `q-${i}` }));
-      return { ...state, draft: { ...draft, questions: newQuestions } };
+      ]);
+      return {
+        ...state,
+        selectedOrder: newQ.order,
+        draft: { ...draft, questions: newQuestions },
+      };
     }
 
     default:
@@ -196,8 +266,11 @@ export function importReducer(state: ImportState, action: ImportAction): ImportS
   }
 }
 
-export function useImportStore() {
-  const [state, dispatch] = useReducer(importReducer, { draft: null, selectedOrder: null });
+export function useImportStore(initialDraft: ImportDraft | null = null) {
+  const [state, dispatch] = useReducer(importReducer, {
+    draft: initialDraft,
+    selectedOrder: initialDraft?.questions[0]?.order ?? null,
+  });
   const actions = useMemo(
     () => ({
       load: (draft: ImportDraft) => dispatch({ type: "load", draft }),
@@ -214,6 +287,8 @@ export function useImportStore() {
         dispatch({ type: "set_choice_answer", order, optionLabels }),
       setBooleanAnswer: (order: number, value: boolean) =>
         dispatch({ type: "set_boolean_answer", order, value }),
+      setBlankAnswer: (order: number, value: string) =>
+        dispatch({ type: "set_blank_answer", order, value }),
       setSubjectiveAnswer: (order: number, markdown: string) =>
         dispatch({ type: "set_subjective_answer", order, markdown }),
       removeQuestion: (order: number) => dispatch({ type: "remove_question", order }),

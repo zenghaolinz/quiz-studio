@@ -54,7 +54,7 @@ export function AppShell({ page, onPageChange, children }: AppShellProps) {
             <h1>{page === "bank-detail" ? "题库详情" : (navItems.find((item) => item.key === page)?.label ?? "")}</h1>
           </div>
           <div className="topbar-actions">
-            <button type="button" className="ghost-button">⌘ K 搜索</button>
+            <button type="button" className="ghost-button" disabled title="全文搜索将在后续版本开放">搜索（开发中）</button>
             <div className="avatar">ZH</div>
           </div>
         </header>

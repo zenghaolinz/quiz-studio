@@ -86,36 +86,56 @@ export function convertDraftToQuestionInput(
   }));
 
   let answer: AnswerSpec;
-  switch (draft.answer.kind) {
-    case "choice": {
+  switch (draft.type) {
+    case "single_choice":
+    case "multiple_choice": {
+      if (draft.answer.kind !== "choice") {
+        throw new DraftConversionError(`第 ${draft.order + 1} 题的答案类型与选择题不匹配`);
+      }
       const labelToIdMap = new Map(draft.options.map((o) => [o.label, o.id]));
-      const optionIds = draft.answer.optionLabels
-        .map((l) => labelToIdMap.get(l))
-        .filter((id): id is string => Boolean(id));
+      const optionIds = draft.answer.optionLabels.map((label) => {
+        const id = labelToIdMap.get(label);
+        if (!id) {
+          throw new DraftConversionError(`第 ${draft.order + 1} 题答案选项 ${label} 不存在`);
+        }
+        return id;
+      });
       if (optionIds.length === 0) {
         throw new DraftConversionError(`第 ${draft.order + 1} 题答案无法对应到选项`);
+      }
+      if (draft.type === "single_choice" && optionIds.length !== 1) {
+        throw new DraftConversionError(`第 ${draft.order + 1} 题是单选题，但答案数量不是 1`);
       }
       answer = { kind: "choice", optionIds };
       break;
     }
-    case "boolean":
+    case "true_false":
+      if (draft.answer.kind !== "boolean") {
+        throw new DraftConversionError(`第 ${draft.order + 1} 题的答案类型与判断题不匹配`);
+      }
       answer = { kind: "boolean", value: draft.answer.value };
       break;
-    case "blank":
+    case "fill_blank":
+      if (draft.answer.kind !== "blank") {
+        throw new DraftConversionError(`第 ${draft.order + 1} 题的答案类型与填空题不匹配`);
+      }
       answer = {
         kind: "blank",
         acceptedAnswers: draft.answer.acceptedAnswers,
         caseSensitive: false,
       };
       break;
-    case "subjective":
+    case "short_answer":
+    case "essay":
+      if (draft.answer.kind !== "subjective") {
+        throw new DraftConversionError(`第 ${draft.order + 1} 题的答案类型与主观题不匹配`);
+      }
       answer = {
         kind: "subjective",
         referenceAnswerMarkdown: draft.answer.referenceMarkdown,
         rubric: [],
       };
       break;
-    case "unknown":
     default:
       throw new DraftConversionError(`第 ${draft.order + 1} 题答案缺失，无法导入`);
   }
