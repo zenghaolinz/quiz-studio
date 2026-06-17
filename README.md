@@ -1,4 +1,4 @@
-# Quiz Studio Foundation
+# Quiz Studio v0.2.0
 
 一个面向 PC 首发、预留移动端的本地优先智能刷题软件骨架。
 
@@ -15,6 +15,8 @@
 - TXT/Markdown 规则切题、导入预览修正与批量写库
 - 浏览器开发模式下使用 localStorage 验证完整导入链路
 - 题库、刷题、自测、OCR、设置的基础界面
+- 题库缺失解析扫描、单题生成与批量 AI 补全
+- OpenAI、Anthropic、Gemini、DeepSeek、GLM、Qwen、Kimi、火山方舟、Ollama、LM Studio 等 Provider 预设
 
 ## 环境要求
 
@@ -68,7 +70,7 @@ Model: glm-ocr
 - DOCX/PDF/图片导入器
 - 更复杂的答案集中式题库、表格题库与组合题切分
 - GLM-OCR 模型下载与 sidecar 生命周期管理
-- AI 生成解析和主观题评分
+- AI 主观题评分（题目解析生成功能已在 v0.2.0 实现）
 - 完整测试会话持久化
 - 移动端适配和安全存储替换
 - 自动更新、签名和正式安装包资源
@@ -83,3 +85,8 @@ src/features/ocr/       OCR 适配器
 docs/                   设计与部署文档
 samples/                示例数据
 ```
+
+
+## v0.2.0
+
+修复 Markdown 原文预览中 `.option` 全局样式冲突导致的逐字堆叠，并加入题库 AI 解析补全功能。详见 `docs/V0.2_AI_EXPLANATION.md`。

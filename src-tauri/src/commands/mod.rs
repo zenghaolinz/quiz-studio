@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod banks;
 pub mod files;
 pub mod health;

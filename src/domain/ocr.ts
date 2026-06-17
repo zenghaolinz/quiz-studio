@@ -26,7 +26,7 @@ export interface ProviderConfig {
   id: string;
   name: string;
   kind: "ocr" | "llm";
-  protocol: "glm_sdk" | "openai_compatible";
+  protocol: "glm_sdk" | "openai_compatible" | "anthropic_messages";
   baseUrl: string;
   model: string;
   enabled: boolean;
@@ -38,7 +38,7 @@ export interface UpsertProviderInput {
   id?: string;
   name: string;
   kind: "ocr" | "llm";
-  protocol: "glm_sdk" | "openai_compatible";
+  protocol: "glm_sdk" | "openai_compatible" | "anthropic_messages";
   baseUrl: string;
   model: string;
   enabled: boolean;

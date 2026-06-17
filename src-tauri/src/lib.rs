@@ -35,6 +35,8 @@ pub fn run() {
             commands::providers::list_provider_configs,
             commands::providers::upsert_provider_config,
             commands::ocr::run_glm_ocr,
+            commands::ai::generate_question_explanation,
+            commands::ai::test_ai_provider,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Quiz Studio");

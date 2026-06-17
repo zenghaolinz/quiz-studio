@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { EmptyState } from "../components/EmptyState";
 import { MarkdownContent } from "../components/MarkdownContent";
 import type { Question, QuestionBank } from "../domain/question";
+import { AiExplanationPanel } from "../features/ai/components/AiExplanationPanel";
 import {
   createQuestionBank,
   deleteQuestion,
@@ -111,9 +112,10 @@ interface BankDetailPageProps {
   onBack: () => void;
   onPractice: () => void;
   onTest: () => void;
+  onOpenSettings: () => void;
 }
 
-export function BankDetailPage({ bank, onBack, onPractice, onTest }: BankDetailPageProps) {
+export function BankDetailPage({ bank, onBack, onPractice, onTest, onOpenSettings }: BankDetailPageProps) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -133,6 +135,10 @@ export function BankDetailPage({ bank, onBack, onPractice, onTest }: BankDetailP
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
+  }
+
+  function handleQuestionUpdated(updated: Question) {
+    setQuestions((current) => current.map((question) => question.id === updated.id ? updated : question));
   }
 
   return (
@@ -160,6 +166,14 @@ export function BankDetailPage({ bank, onBack, onPractice, onTest }: BankDetailP
         <EmptyState title="这个题库还没有题目" description="去导入页添加题目。" />
       ) : null}
 
+      {!loading && questions.length > 0 ? (
+        <AiExplanationPanel
+          questions={questions}
+          onQuestionUpdated={handleQuestionUpdated}
+          onOpenSettings={onOpenSettings}
+        />
+      ) : null}
+
       <div className="question-list">
         {questions.map((q, i) => (
           <article className="panel compact-panel question-row" key={q.id}>
@@ -169,6 +183,16 @@ export function BankDetailPage({ bank, onBack, onPractice, onTest }: BankDetailP
               <button type="button" className="text-button danger" onClick={() => void handleDeleteQuestion(q.id)}>删除</button>
             </header>
             <MarkdownContent>{q.stemMarkdown}</MarkdownContent>
+            {q.explanationMarkdown?.trim() ? (
+              <details className="question-explanation-details">
+                <summary>查看解析</summary>
+                <div className="question-explanation-content">
+                  <MarkdownContent>{q.explanationMarkdown}</MarkdownContent>
+                </div>
+              </details>
+            ) : (
+              <p className="missing-explanation-label">暂无解析</p>
+            )}
           </article>
         ))}
       </div>

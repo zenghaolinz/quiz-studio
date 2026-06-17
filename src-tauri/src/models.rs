@@ -91,3 +91,28 @@ pub struct OcrResult {
     pub warnings: Vec<String>,
     pub elapsed_ms: u128,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateExplanationInput {
+    pub provider_id: String,
+    pub question_id: String,
+    pub style: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateExplanationResult {
+    pub question: Question,
+    pub provider_id: String,
+    pub model: String,
+    pub elapsed_ms: u128,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderTestResult {
+    pub ok: bool,
+    pub message: String,
+    pub elapsed_ms: u128,
+}

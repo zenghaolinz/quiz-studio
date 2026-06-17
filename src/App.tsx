@@ -48,6 +48,7 @@ export default function App() {
             onBack={() => setPage("banks")}
             onPractice={startPractice}
             onTest={startTest}
+            onOpenSettings={() => setPage("settings")}
           />
         ) : null}
         {page === "practice" ? <PracticePage bankId={selectedBank?.id ?? null} bankName={selectedBank?.name} /> : null}

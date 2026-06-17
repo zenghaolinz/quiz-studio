@@ -1,4 +1,7 @@
-use std::{path::Path, sync::{Arc, Mutex}};
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -46,7 +49,9 @@ impl Database {
     /// 后续新增迁移在此追加 `apply_migration(&conn, N, "ALTER ...")`。
     fn migrate(connection: &Connection) -> AppResult<()> {
         let current: Option<i64> = connection
-            .query_row("SELECT MAX(version) FROM schema_version", [], |row| row.get(0))
+            .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+                row.get(0)
+            })
             .ok()
             .flatten();
 
@@ -124,6 +129,49 @@ impl Database {
         )?;
         let rows = statement.query_map([bank_id], map_question_row)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn get_question(&self, id: &str) -> AppResult<Option<Question>> {
+        let connection = self.connection()?;
+        connection
+            .query_row(
+                "SELECT id, bank_id, parent_id, type, stem_markdown, options_json, answer_json,
+                        explanation_markdown, max_score, difficulty, tags_json, source_file_id,
+                        source_page, created_at, updated_at
+                 FROM questions WHERE id = ?1",
+                [id],
+                map_question_row,
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub fn update_question_explanation(&self, id: &str, markdown: &str) -> AppResult<Question> {
+        let explanation = markdown.trim();
+        if explanation.is_empty() {
+            return Err(AppError::InvalidConfig("解析内容不能为空".into()));
+        }
+        let now = Utc::now().to_rfc3339();
+        {
+            let connection = self.connection()?;
+            let bank_id: Option<String> = connection
+                .query_row("SELECT bank_id FROM questions WHERE id = ?1", [id], |row| {
+                    row.get(0)
+                })
+                .optional()?;
+            let bank_id =
+                bank_id.ok_or_else(|| AppError::NotFound(format!("题目 {} 不存在", id)))?;
+            connection.execute(
+                "UPDATE questions SET explanation_markdown = ?1, updated_at = ?2 WHERE id = ?3",
+                params![explanation, now, id],
+            )?;
+            connection.execute(
+                "UPDATE question_banks SET updated_at = ?1 WHERE id = ?2",
+                params![now, bank_id],
+            )?;
+        }
+        self.get_question(id)?
+            .ok_or_else(|| AppError::NotFound(format!("题目 {} 不存在", id)))
     }
 
     pub fn create_question(&self, input: CreateQuestionInput) -> AppResult<Question> {
@@ -232,7 +280,10 @@ impl Database {
     }
 
     pub fn upsert_provider_config(&self, input: &UpsertProviderInput) -> AppResult<ProviderConfig> {
-        let id = input.id.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+        let id = input
+            .id
+            .clone()
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
         validate_provider(input)?;
         let now = Utc::now().to_rfc3339();
         let connection = self.connection()?;
@@ -259,7 +310,8 @@ impl Database {
                 now,
             ],
         )?;
-        self.get_provider_config(&id)?.ok_or_else(|| AppError::NotFound(id))
+        self.get_provider_config(&id)?
+            .ok_or_else(|| AppError::NotFound(id))
     }
 
     pub fn get_provider_config(&self, id: &str) -> AppResult<Option<ProviderConfig>> {
@@ -365,13 +417,33 @@ fn validate_provider(input: &UpsertProviderInput) -> AppResult<()> {
     if input.name.trim().is_empty() {
         return Err(AppError::InvalidConfig("Provider 名称不能为空".into()));
     }
-    if !matches!(input.protocol.as_str(), "glm_sdk" | "openai_compatible") {
+    if !matches!(
+        input.protocol.as_str(),
+        "glm_sdk" | "openai_compatible" | "anthropic_messages"
+    ) {
         return Err(AppError::InvalidConfig("不支持的 Provider 协议".into()));
+    }
+    if !matches!(input.kind.as_str(), "ocr" | "llm") {
+        return Err(AppError::InvalidConfig(
+            "Provider 类型只能是 ocr 或 llm".into(),
+        ));
+    }
+    if input.kind == "llm" && input.protocol == "glm_sdk" {
+        return Err(AppError::InvalidConfig(
+            "语言模型 Provider 不能使用 glm_sdk OCR 协议".into(),
+        ));
+    }
+    if input.kind == "ocr" && input.protocol == "anthropic_messages" {
+        return Err(AppError::InvalidConfig(
+            "OCR Provider 不能使用 Anthropic Messages 协议".into(),
+        ));
     }
     let parsed = url::Url::parse(input.base_url.trim())
         .map_err(|_| AppError::InvalidConfig("服务地址不是有效 URL".into()))?;
     if !matches!(parsed.scheme(), "http" | "https") {
-        return Err(AppError::InvalidConfig("服务地址只允许 HTTP 或 HTTPS".into()));
+        return Err(AppError::InvalidConfig(
+            "服务地址只允许 HTTP 或 HTTPS".into(),
+        ));
     }
     Ok(())
 }
@@ -383,7 +455,10 @@ mod tests {
 
     fn temp_db() -> Database {
         let mut path = env::temp_dir();
-        path.push(format!("quiz-studio-smoke-{}.sqlite3", uuid::Uuid::new_v4()));
+        path.push(format!(
+            "quiz-studio-smoke-{}.sqlite3",
+            uuid::Uuid::new_v4()
+        ));
         Database::open(&path).expect("database should open and migrate")
     }
 
@@ -460,7 +535,10 @@ mod tests {
         db.delete_question(&qs[0].id).unwrap();
         assert_eq!(db.list_questions(&bank.id).unwrap().len(), 2);
         // 删不存在
-        assert!(matches!(db.delete_question("nope"), Err(AppError::NotFound(_))));
+        assert!(matches!(
+            db.delete_question("nope"),
+            Err(AppError::NotFound(_))
+        ));
     }
 
     #[test]
@@ -493,11 +571,8 @@ mod tests {
                 description: None,
             })
             .unwrap();
-        db.create_questions_batch(
-            &bank.id,
-            &[sample_question_input(&bank.id, "题1")],
-        )
-        .unwrap();
+        db.create_questions_batch(&bank.id, &[sample_question_input(&bank.id, "题1")])
+            .unwrap();
         assert_eq!(db.list_questions(&bank.id).unwrap().len(), 1);
         db.delete_question_bank(&bank.id).unwrap();
         // 题库没了，题也跟着没了
@@ -507,12 +582,33 @@ mod tests {
     }
 
     #[test]
+    fn updates_question_explanation() {
+        let db = temp_db();
+        let bank = db
+            .create_question_bank(CreateQuestionBankInput {
+                name: "ai".into(),
+                subject: None,
+                description: None,
+            })
+            .unwrap();
+        let question = db
+            .create_question(sample_question_input(&bank.id, "题目"))
+            .unwrap();
+        let updated = db
+            .update_question_explanation(&question.id, "  新解析  ")
+            .unwrap();
+        assert_eq!(updated.explanation_markdown.as_deref(), Some("新解析"));
+    }
+
+    #[test]
     fn migrate_records_version_one() {
         let db = temp_db();
         let v: i64 = db
             .connection()
             .unwrap()
-            .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get::<_, i64>(0))
+            .query_row("SELECT MAX(version) FROM schema_version", [], |r| {
+                r.get::<_, i64>(0)
+            })
             .unwrap();
         assert_eq!(v, 1);
     }
