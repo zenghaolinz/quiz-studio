@@ -110,9 +110,10 @@ interface BankDetailPageProps {
   bank: QuestionBank;
   onBack: () => void;
   onPractice: () => void;
+  onTest: () => void;
 }
 
-export function BankDetailPage({ bank, onBack, onPractice }: BankDetailPageProps) {
+export function BankDetailPage({ bank, onBack, onPractice, onTest }: BankDetailPageProps) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -146,7 +147,10 @@ export function BankDetailPage({ bank, onBack, onPractice }: BankDetailPageProps
         </div>
         <div className="toolbar-row">
           <button type="button" className="ghost-button" onClick={onBack}>← 返回题库列表</button>
-          <button type="button" className="primary-button" disabled={questions.length === 0} onClick={onPractice}>开始刷题</button>
+          <div className="toolbar-actions">
+            <button type="button" className="secondary-button" disabled={questions.length === 0} onClick={onTest}>进入自测</button>
+            <button type="button" className="primary-button" disabled={questions.length === 0} onClick={onPractice}>开始刷题</button>
+          </div>
         </div>
         {error ? <div className="alert error">{error}</div> : null}
         {loading ? <div className="loading-card">正在加载题目…</div> : null}

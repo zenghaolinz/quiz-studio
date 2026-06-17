@@ -1,43 +1,78 @@
-import { useState } from "react";
-import { MarkdownContent } from "../components/MarkdownContent";
+import { useEffect, useState } from "react";
+import { EmptyState } from "../components/EmptyState";
+import type { Question } from "../domain/question";
+import { listQuestions } from "../features/banks/api";
 
-export function TestPage() {
-  const [answerVisible, setAnswerVisible] = useState(false);
-  const [answer, setAnswer] = useState("");
+interface TestPageProps {
+  bankId: string | null;
+  bankName?: string;
+  onSelectBank: () => void;
+}
+
+/**
+ * 自测页当前只保留真实数据入口，不再展示硬编码示例题。
+ * 完整的自测会话、统一提交与计分将在后续版本实现。
+ */
+export function TestPage({ bankId, bankName, onSelectBank }: TestPageProps) {
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!bankId) {
+      setQuestions([]);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    listQuestions(bankId)
+      .then(setQuestions)
+      .catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))
+      .finally(() => setLoading(false));
+  }, [bankId]);
+
+  if (!bankId) {
+    return (
+      <EmptyState
+        title="还没有选择用于自测的题库"
+        description="请先到题库页打开一个题库，再从题库详情进入自测。"
+      />
+    );
+  }
+
+  if (loading) return <div className="loading-card">正在加载题库…</div>;
+  if (error) return <div className="alert error">{error}</div>;
+
+  if (questions.length === 0) {
+    return (
+      <EmptyState
+        title="这个题库还没有题目"
+        description="导入题目后才能创建自测。"
+      />
+    );
+  }
 
   return (
-    <div className="question-layout">
-      <section className="question-card">
-        <div className="question-meta"><span>简答题 · 10 分</span><span>8 / 10</span></div>
-        <MarkdownContent>
-          {"简述 PCR 反应中引物的作用，并说明为什么正向引物和反向引物需要成对设计。"}
-        </MarkdownContent>
-        <textarea
-          className="answer-textarea"
-          value={answer}
-          onChange={(event) => setAnswer(event.target.value)}
-          placeholder="在此输入你的答案……"
-          rows={10}
-        />
-        <div className="answer-actions">
-          <button type="button" className="secondary-button" onClick={() => setAnswerVisible((value) => !value)}>
-            {answerVisible ? "隐藏参考答案" : "显示参考答案"}
-          </button>
-          <span className="muted">查看后，本题会被标记为“已查看答案”，默认不计入严格自测得分。</span>
-        </div>
-        {answerVisible ? (
-          <div className="answer-panel warning-panel">
-            <strong>参考答案</strong>
-            <p>引物为 DNA 聚合酶提供具有自由 3′-OH 末端的起始点，并限定扩增片段的两个边界。正向与反向引物分别与模板两条链互补，使目标区域能够在循环中进行指数扩增。</p>
+    <div className="page-stack">
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">Self test</span>
+            <h2>{bankName ?? "当前题库"}</h2>
           </div>
-        ) : null}
+          <span className="badge">{questions.length} 道题</span>
+        </div>
+        <div className="alert">
+          当前已经绑定真实题库，不再显示演示题。完整的随机抽题、整卷作答、统一提交和评分功能尚未实现。
+        </div>
+        <div className="button-row">
+          <button type="button" className="secondary-button" onClick={onSelectBank}>更换题库</button>
+          <button type="button" className="primary-button" disabled title="完整自测会话将在后续版本实现">
+            创建自测（开发中）
+          </button>
+        </div>
       </section>
-      <aside className="question-side-panel">
-        <span className="eyebrow">自测模式</span>
-        <h3>提交后统一评分</h3>
-        <p>客观题本地计分；主观题可按参考答案和评分点交给 AI 批改。</p>
-        <button type="button" className="primary-button full-width" disabled title="真实自测会话尚未接入">提交整套试卷（开发中）</button>
-      </aside>
     </div>
   );
 }

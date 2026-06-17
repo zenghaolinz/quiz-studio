@@ -31,6 +31,10 @@ export default function App() {
     setPage("practice");
   }
 
+  function startTest() {
+    setPage("test");
+  }
+
   return (
     <AppShell page={page} onPageChange={setPage}>
       <Suspense fallback={<PageLoading />}>
@@ -39,10 +43,21 @@ export default function App() {
         ) : null}
         {page === "banks" ? <BanksPageModule onOpenBank={openBank} /> : null}
         {page === "bank-detail" && selectedBank ? (
-          <BankDetailPageModule bank={selectedBank} onBack={() => setPage("banks")} onPractice={startPractice} />
+          <BankDetailPageModule
+            bank={selectedBank}
+            onBack={() => setPage("banks")}
+            onPractice={startPractice}
+            onTest={startTest}
+          />
         ) : null}
         {page === "practice" ? <PracticePage bankId={selectedBank?.id ?? null} bankName={selectedBank?.name} /> : null}
-        {page === "test" ? <TestPage /> : null}
+        {page === "test" ? (
+          <TestPage
+            bankId={selectedBank?.id ?? null}
+            bankName={selectedBank?.name}
+            onSelectBank={() => setPage("banks")}
+          />
+        ) : null}
         {page === "ocr" ? <OcrPage /> : null}
         {page === "import" && !importDraft ? (
           <ImportSelectPage onLoaded={(draft) => setImportDraft(draft)} />

@@ -16,34 +16,50 @@ const BLOCK_GLYPH: Record<DocumentBlock["kind"], string> = {
 };
 
 /**
- * 左栏：按 DocumentBlock 展示原文。题号行可点击选中对应草稿，
- * 让用户对照原文修正识别结果。
+ * 左栏：按 DocumentBlock 展示原文。
+ *
+ * 每个属于题目 sourceRange 的 block 都可用于选中对应题目，避免只有题号行可点。
+ * 不再把普通行渲染成 disabled button，因为 WebView 对 disabled 按钮会附加灰度/透明度，
+ * 并且在窄栏内可能出现异常的 intrinsic-size 布局。
  */
 export function SourcePreview({ draft, selectedOrder, onSelect }: SourcePreviewProps) {
-  // 题号 → 该题起始 block index 的映射，用于高亮当前选中题的原文区间
   const orderAtBlock = new Map<number, number>();
-  for (const q of draft.questions) {
-    if (q.sourceRange) orderAtBlock.set(q.sourceRange.startBlock, q.order);
+
+  for (const question of draft.questions) {
+    const range = question.sourceRange;
+    if (!range) continue;
+
+    for (let blockIndex = range.startBlock; blockIndex <= range.endBlock; blockIndex += 1) {
+      orderAtBlock.set(blockIndex, question.order);
+    }
   }
 
   return (
     <div className="source-preview">
       <div className="panel-heading">
-        <div><span className="eyebrow">Source</span><h3>原始文档</h3></div>
+        <div>
+          <span className="eyebrow">Source</span>
+          <h3>原始文档</h3>
+        </div>
         <span className="badge">{draft.sourceName ?? draft.sourceType}</span>
       </div>
+
       <div className="source-lines">
         {draft.blocks.map((block) => {
           const order = orderAtBlock.get(block.index);
-          const isStart = order !== undefined;
-          const isSelected = selectedOrder !== null && isStart && order === selectedOrder;
+          const selectable = order !== undefined;
+          const isSelected = selectedOrder !== null && order === selectedOrder;
+
           return (
             <button
               type="button"
               key={block.index}
               className={`source-line ${block.kind} ${isSelected ? "selected" : ""}`}
-              onClick={() => isStart && order !== undefined && onSelect(order)}
-              disabled={!isStart}
+              onClick={() => {
+                if (order !== undefined) onSelect(order);
+              }}
+              aria-disabled={!selectable}
+              tabIndex={selectable ? 0 : -1}
             >
               <span className="block-glyph" aria-hidden="true">{BLOCK_GLYPH[block.kind]}</span>
               <span className="block-line">{block.lineNumber}</span>
