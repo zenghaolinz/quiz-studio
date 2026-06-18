@@ -5,8 +5,16 @@ import type { Question } from "../../../domain/question";
 import { isTauriRuntime } from "../../../lib/tauri";
 import { listProviders } from "../../ocr/glmOcrApi";
 import { generateQuestionExplanation } from "../api";
+import {
+  clearBatchCheckpoint,
+  loadBatchCheckpoint,
+  saveBatchCheckpoint,
+  updateBatchCheckpoint,
+  type AiBatchCheckpoint,
+} from "../batchCheckpoint";
 
 interface AiExplanationPanelProps {
+  bankId: string;
   questions: Question[];
   onQuestionUpdated: (question: Question) => void;
   onOpenSettings: () => void;
@@ -19,7 +27,7 @@ interface BatchProgress {
   active: number;
 }
 
-export function AiExplanationPanel({ questions, onQuestionUpdated, onOpenSettings }: AiExplanationPanelProps) {
+export function AiExplanationPanel({ bankId, questions, onQuestionUpdated, onOpenSettings }: AiExplanationPanelProps) {
   const desktop = isTauriRuntime();
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [providerId, setProviderId] = useState("");
@@ -31,6 +39,7 @@ export function AiExplanationPanel({ questions, onQuestionUpdated, onOpenSetting
   const [progress, setProgress] = useState<BatchProgress | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [singleRunningId, setSingleRunningId] = useState<string | null>(null);
+  const [recovered, setRecovered] = useState<AiBatchCheckpoint | null>(null);
   const stopRequested = useRef(false);
 
   const llmProviders = useMemo(
@@ -56,6 +65,21 @@ export function AiExplanationPanel({ questions, onQuestionUpdated, onOpenSetting
       .finally(() => setLoadingProviders(false));
   }, [desktop]);
 
+  useEffect(() => {
+    const checkpoint = loadBatchCheckpoint(bankId);
+    if (!checkpoint) { setRecovered(null); return; }
+    const missingIds = new Set(missingQuestions.map((question) => question.id));
+    const pendingQuestionIds = checkpoint.pendingQuestionIds.filter((id) => missingIds.has(id));
+    if (pendingQuestionIds.length === 0) {
+      clearBatchCheckpoint(bankId);
+      setRecovered(null);
+    } else {
+      setRecovered({ ...checkpoint, pendingQuestionIds });
+    }
+    // Only recover when opening another bank. Live progress owns subsequent updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bankId]);
+
   async function generateOne(question: Question) {
     if (!providerId || singleRunningId || running) return;
     setSingleRunningId(question.id);
@@ -70,11 +94,22 @@ export function AiExplanationPanel({ questions, onQuestionUpdated, onOpenSetting
     }
   }
 
-  async function startBatch() {
-    if (!providerId || running || missingQuestions.length === 0) return;
-    const queue = [...missingQuestions];
+  async function startBatch(resume = false) {
+    const checkpoint = resume ? recovered : null;
+    const activeProviderId = checkpoint?.providerId ?? providerId;
+    const activeStyle = checkpoint?.style ?? style;
+    const activeConcurrency = checkpoint?.concurrency ?? concurrency;
+    if (!activeProviderId || running || missingQuestions.length === 0) return;
+    if (!llmProviders.some((provider) => provider.id === activeProviderId)) {
+      setErrors(["上次批次使用的模型配置已不可用，请选择模型后重新开始。"]);
+      return;
+    }
+    const pendingIds = checkpoint ? new Set(checkpoint.pendingQuestionIds) : null;
+    const queue = pendingIds ? missingQuestions.filter((question) => pendingIds.has(question.id)) : [...missingQuestions];
+    if (queue.length === 0) { clearBatchCheckpoint(bankId); setRecovered(null); return; }
     let cursor = 0;
     stopRequested.current = false;
+    saveBatchCheckpoint({ bankId, providerId: activeProviderId, style: activeStyle, concurrency: activeConcurrency, pendingQuestionIds: queue.map((question) => question.id), failed: checkpoint?.failed ?? 0 });
     setRunning(true);
     setErrors([]);
     setProgress({ total: queue.length, completed: 0, failed: 0, active: 0 });
@@ -87,8 +122,9 @@ export function AiExplanationPanel({ questions, onQuestionUpdated, onOpenSetting
         if (!question) return;
         setProgress((current) => current ? { ...current, active: current.active + 1 } : current);
         try {
-          const result = await generateQuestionExplanation({ providerId, questionId: question.id, style });
+          const result = await generateQuestionExplanation({ providerId: activeProviderId, questionId: question.id, style: activeStyle });
           onQuestionUpdated(result.question);
+          updateBatchCheckpoint(bankId, question.id, false);
           setProgress((current) => current ? {
             ...current,
             completed: current.completed + 1,
@@ -97,6 +133,7 @@ export function AiExplanationPanel({ questions, onQuestionUpdated, onOpenSetting
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           setErrors((current) => [...current, `第 ${index + 1} 个任务失败：${message}`].slice(-8));
+          updateBatchCheckpoint(bankId, question.id, true);
           setProgress((current) => current ? {
             ...current,
             failed: current.failed + 1,
@@ -107,10 +144,11 @@ export function AiExplanationPanel({ questions, onQuestionUpdated, onOpenSetting
     }
 
     try {
-      const workerCount = Math.min(Math.max(1, concurrency), queue.length);
+      const workerCount = Math.min(Math.max(1, activeConcurrency), queue.length);
       await Promise.all(Array.from({ length: workerCount }, () => worker()));
     } finally {
       setRunning(false);
+      setRecovered(loadBatchCheckpoint(bankId));
     }
   }
 
@@ -168,10 +206,11 @@ export function AiExplanationPanel({ questions, onQuestionUpdated, onOpenSetting
                   {running ? "正在生成…" : `为 ${missingQuestions.length} 道缺失题生成解析`}
                 </button>
                 {running ? <button type="button" className="secondary-button" onClick={() => { stopRequested.current = true; }}>完成当前请求后暂停</button> : null}
+                {!running && recovered ? <button type="button" className="secondary-button" onClick={() => void startBatch(true)}>继续上次批次（剩余 {recovered.pendingQuestionIds.length} 题）</button> : null}
               </div>
 
               {progress ? (
-                <div className="ai-progress-card">
+                <div className="ai-progress-card" role="status" aria-live="polite">
                   <div className="ai-progress-summary"><strong>{percent}%</strong><span>完成 {progress.completed} · 失败 {progress.failed} · 进行中 {progress.active} · 共 {progress.total}</span></div>
                   <div className="progress-track"><span style={{ width: `${percent}%` }} /></div>
                 </div>
@@ -179,7 +218,7 @@ export function AiExplanationPanel({ questions, onQuestionUpdated, onOpenSetting
             </>
           ) : null}
 
-          {errors.map((error, index) => <div className="alert error" key={`${error}-${index}`}>{error}</div>)}
+          {errors.map((error, index) => <div className="alert error" role="alert" key={`${error}-${index}`}>{error}</div>)}
 
           {llmProviders.length > 0 && missingQuestions.length > 0 ? (
             <details className="ai-missing-list">

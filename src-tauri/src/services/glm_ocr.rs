@@ -55,6 +55,9 @@ pub async fn run(
         raw_json,
         warnings,
         elapsed_ms: started_at.elapsed().as_millis(),
+        source_asset_id: None,
+        raw_asset_id: None,
+        markdown_asset_id: None,
     })
 }
 

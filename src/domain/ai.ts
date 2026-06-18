@@ -1,4 +1,5 @@
 import type { Question } from "./question";
+import type { AiGradingDraft } from "./grading";
 
 export type ExplanationStyle = "concise" | "detailed" | "step_by_step";
 
@@ -20,3 +21,11 @@ export interface ProviderTestResult {
   message: string;
   elapsedMs: number;
 }
+
+export interface GenerateSubjectiveGradeInput {
+  providerId: string;
+  questionId: string;
+  response: string;
+}
+
+export type GenerateSubjectiveGradeResult = AiGradingDraft;

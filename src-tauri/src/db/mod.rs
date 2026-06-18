@@ -10,10 +10,13 @@ use uuid::Uuid;
 use crate::{
     error::{AppError, AppResult},
     models::{
-        CreateQuestionBankInput, CreateQuestionInput, ProviderConfig, Question, QuestionBank,
-        TestAttempt, TestSessionSnapshot, UpsertProviderInput,
+        CreateQuestionBankInput, CreateQuestionInput, Question, QuestionBank, TestAttempt,
+        TestSessionSnapshot,
     },
 };
+
+mod assets;
+mod providers;
 
 const INIT_SQL: &str = include_str!("schema.sql");
 
@@ -63,8 +66,49 @@ impl Database {
                 params![now],
             )?;
         }
-        // 后续迁移示例（当前无）：
-        // apply_migration(connection, 2, "ALTER TABLE ... ADD COLUMN ...")?;
+        if current.unwrap_or(0) < 2 {
+            let has_ai_grading = connection
+                .prepare("PRAGMA table_info(attempts)")?
+                .query_map([], |row| row.get::<_, String>(1))?
+                .collect::<Result<Vec<_>, _>>()?
+                .iter()
+                .any(|column| column == "ai_grading_json");
+            if !has_ai_grading {
+                connection.execute("ALTER TABLE attempts ADD COLUMN ai_grading_json TEXT", [])?;
+            }
+            connection.execute(
+                "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (2, ?1)",
+                params![Utc::now().to_rfc3339()],
+            )?;
+        }
+        if current.unwrap_or(0) < 3 {
+            connection.execute_batch(
+                "CREATE TABLE IF NOT EXISTS assets (
+                    id TEXT PRIMARY KEY,
+                    sha256 TEXT NOT NULL UNIQUE,
+                    relative_path TEXT NOT NULL UNIQUE,
+                    original_name TEXT NOT NULL,
+                    mime_type TEXT NOT NULL,
+                    byte_size INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS asset_links (
+                    id TEXT PRIMARY KEY,
+                    asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+                    parent_asset_id TEXT REFERENCES assets(id) ON DELETE CASCADE,
+                    role TEXT NOT NULL,
+                    provider_id TEXT,
+                    model TEXT,
+                    created_at TEXT NOT NULL
+                 );
+                 CREATE INDEX IF NOT EXISTS idx_asset_links_asset_id ON asset_links(asset_id);
+                 CREATE INDEX IF NOT EXISTS idx_asset_links_parent_id ON asset_links(parent_asset_id);",
+            )?;
+            connection.execute(
+                "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (3, ?1)",
+                params![Utc::now().to_rfc3339()],
+            )?;
+        }
         Ok(())
     }
 
@@ -336,7 +380,14 @@ impl Database {
         bank_id: &str,
         status: &str,
         settings: &serde_json::Value,
-        attempts: &[(String, serde_json::Value, bool, Option<bool>, Option<f64>)],
+        attempts: &[(
+            String,
+            serde_json::Value,
+            bool,
+            Option<bool>,
+            Option<f64>,
+            Option<serde_json::Value>,
+        )],
         score: Option<f64>,
         max_score: Option<f64>,
     ) -> AppResult<TestSessionSnapshot> {
@@ -367,12 +418,13 @@ impl Database {
                 if status == "submitted" { Some(now.clone()) } else { None }],
         )?;
         tx.execute("DELETE FROM attempts WHERE session_id = ?1", [&id])?;
-        for (question_id, response, revealed, is_correct, attempt_score) in attempts {
+        for (question_id, response, revealed, is_correct, attempt_score, ai_grading) in attempts {
             tx.execute(
-                "INSERT INTO attempts (id, session_id, question_id, response_json, is_correct, score, answer_revealed, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+                "INSERT INTO attempts (id, session_id, question_id, response_json, is_correct, score, answer_revealed, ai_grading_json, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
                 params![Uuid::new_v4().to_string(), id, question_id, serde_json::to_string(response)?,
-                    is_correct.map(i64::from), attempt_score, i64::from(*revealed), now],
+                    is_correct.map(i64::from), attempt_score, i64::from(*revealed),
+                    ai_grading.as_ref().map(serde_json::to_string).transpose()?, now],
             )?;
         }
         tx.commit()?;
@@ -407,7 +459,7 @@ impl Database {
             }).optional()?;
         if let Some(session) = snapshot.as_mut() {
             let mut statement = connection.prepare(
-                "SELECT id, question_id, response_json, is_correct, score, answer_revealed FROM attempts WHERE session_id = ?1 ORDER BY created_at ASC")?;
+                "SELECT id, question_id, response_json, is_correct, score, answer_revealed, ai_grading_json FROM attempts WHERE session_id = ?1 ORDER BY created_at ASC")?;
             session.attempts = statement
                 .query_map([id], |row| {
                     let response: String = row.get(2)?;
@@ -418,93 +470,14 @@ impl Database {
                         is_correct: row.get::<_, Option<i64>>(3)?.map(|value| value != 0),
                         score: row.get(4)?,
                         answer_revealed: row.get::<_, i64>(5)? != 0,
+                        ai_grading: row
+                            .get::<_, Option<String>>(6)?
+                            .and_then(|value| serde_json::from_str(&value).ok()),
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
         }
         Ok(snapshot)
-    }
-
-    pub fn list_provider_configs(&self) -> AppResult<Vec<ProviderConfig>> {
-        let connection = self.connection()?;
-        let mut statement = connection.prepare(
-            "SELECT id, name, kind, protocol, base_url, model, enabled, created_at, updated_at
-             FROM provider_configs ORDER BY updated_at DESC",
-        )?;
-        let rows = statement.query_map([], |row| {
-            Ok(ProviderConfig {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                kind: row.get(2)?,
-                protocol: row.get(3)?,
-                base_url: row.get(4)?,
-                model: row.get(5)?,
-                enabled: row.get::<_, i64>(6)? != 0,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
-            })
-        })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-    }
-
-    pub fn upsert_provider_config(&self, input: &UpsertProviderInput) -> AppResult<ProviderConfig> {
-        let id = input
-            .id
-            .clone()
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
-        validate_provider(input)?;
-        let now = Utc::now().to_rfc3339();
-        let connection = self.connection()?;
-        connection.execute(
-            "INSERT INTO provider_configs (
-                id, name, kind, protocol, base_url, model, enabled, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
-             ON CONFLICT(id) DO UPDATE SET
-                name = excluded.name,
-                kind = excluded.kind,
-                protocol = excluded.protocol,
-                base_url = excluded.base_url,
-                model = excluded.model,
-                enabled = excluded.enabled,
-                updated_at = excluded.updated_at",
-            params![
-                id,
-                input.name.trim(),
-                input.kind,
-                input.protocol,
-                input.base_url.trim(),
-                input.model.trim(),
-                if input.enabled { 1 } else { 0 },
-                now,
-            ],
-        )?;
-        self.get_provider_config(&id)?
-            .ok_or_else(|| AppError::NotFound(id))
-    }
-
-    pub fn get_provider_config(&self, id: &str) -> AppResult<Option<ProviderConfig>> {
-        let connection = self.connection()?;
-        connection
-            .query_row(
-                "SELECT id, name, kind, protocol, base_url, model, enabled, created_at, updated_at
-                 FROM provider_configs WHERE id = ?1",
-                [id],
-                |row| {
-                    Ok(ProviderConfig {
-                        id: row.get(0)?,
-                        name: row.get(1)?,
-                        kind: row.get(2)?,
-                        protocol: row.get(3)?,
-                        base_url: row.get(4)?,
-                        model: row.get(5)?,
-                        enabled: row.get::<_, i64>(6)? != 0,
-                        created_at: row.get(7)?,
-                        updated_at: row.get(8)?,
-                    })
-                },
-            )
-            .optional()
-            .map_err(Into::into)
     }
 }
 
@@ -579,41 +552,6 @@ fn map_question_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Question> {
         created_at: row.get(13)?,
         updated_at: row.get(14)?,
     })
-}
-
-fn validate_provider(input: &UpsertProviderInput) -> AppResult<()> {
-    if input.name.trim().is_empty() {
-        return Err(AppError::InvalidConfig("Provider 名称不能为空".into()));
-    }
-    if !matches!(
-        input.protocol.as_str(),
-        "glm_sdk" | "openai_compatible" | "anthropic_messages"
-    ) {
-        return Err(AppError::InvalidConfig("不支持的 Provider 协议".into()));
-    }
-    if !matches!(input.kind.as_str(), "ocr" | "llm") {
-        return Err(AppError::InvalidConfig(
-            "Provider 类型只能是 ocr 或 llm".into(),
-        ));
-    }
-    if input.kind == "llm" && input.protocol == "glm_sdk" {
-        return Err(AppError::InvalidConfig(
-            "语言模型 Provider 不能使用 glm_sdk OCR 协议".into(),
-        ));
-    }
-    if input.kind == "ocr" && input.protocol == "anthropic_messages" {
-        return Err(AppError::InvalidConfig(
-            "OCR Provider 不能使用 Anthropic Messages 协议".into(),
-        ));
-    }
-    let parsed = url::Url::parse(input.base_url.trim())
-        .map_err(|_| AppError::InvalidConfig("服务地址不是有效 URL".into()))?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err(AppError::InvalidConfig(
-            "服务地址只允许 HTTP 或 HTTPS".into(),
-        ));
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -835,7 +773,7 @@ mod tests {
     }
 
     #[test]
-    fn migrate_records_version_one() {
+    fn migrate_records_latest_version() {
         let db = temp_db();
         let v: i64 = db
             .connection()
@@ -844,7 +782,29 @@ mod tests {
                 r.get::<_, i64>(0)
             })
             .unwrap();
-        assert_eq!(v, 1);
+        assert_eq!(v, 3);
+        let asset_columns = db
+            .connection()
+            .unwrap()
+            .prepare("PRAGMA table_info(assets)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(asset_columns.iter().any(|column| column == "sha256"));
+        let link_columns = db
+            .connection()
+            .unwrap()
+            .prepare("PRAGMA table_info(asset_links)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(link_columns
+            .iter()
+            .any(|column| column == "parent_asset_id"));
     }
 
     #[test]
@@ -872,6 +832,7 @@ mod tests {
                     false,
                     None,
                     None,
+                    Some(serde_json::json!({"score": 3.5, "feedbackMarkdown": "已确认"})),
                 )],
                 None,
                 None,
@@ -882,6 +843,10 @@ mod tests {
         assert_eq!(recovered.id, saved.id);
         assert_eq!(recovered.attempts.len(), 1);
         assert_eq!(recovered.attempts[0].response, serde_json::json!(["b"]));
+        assert_eq!(
+            recovered.attempts[0].ai_grading,
+            Some(serde_json::json!({"score": 3.5, "feedbackMarkdown": "已确认"}))
+        );
     }
 
     #[test]

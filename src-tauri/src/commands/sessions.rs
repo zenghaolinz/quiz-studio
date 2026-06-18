@@ -21,6 +21,7 @@ pub fn save_test_session(
                 attempt.answer_revealed,
                 attempt.is_correct,
                 attempt.score,
+                attempt.ai_grading,
             )
         })
         .collect::<Vec<_>>();

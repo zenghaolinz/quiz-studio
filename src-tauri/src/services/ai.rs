@@ -23,7 +23,13 @@ pub async fn generate_explanation(
     validate_llm_provider(provider)?;
     let prompt = build_explanation_prompt(question, style)?;
     let started_at = Instant::now();
-    let content = call_text_model(state, provider, &prompt).await?;
+    let content = call_text_model(
+        state,
+        provider,
+        "你负责为题库生成准确、可教学、格式规范的解析。",
+        &prompt,
+    )
+    .await?;
     let markdown = parse_explanation_content(&content)?;
     Ok(GeneratedExplanation {
         markdown,
@@ -37,7 +43,13 @@ pub async fn test_provider(
 ) -> AppResult<ProviderTestResult> {
     validate_llm_provider(provider)?;
     let started_at = Instant::now();
-    let response = call_text_model(state, provider, "这是一次连接测试。请只回复：连接成功").await?;
+    let response = call_text_model(
+        state,
+        provider,
+        "你是一个连接测试助手。",
+        "这是一次连接测试。请只回复：连接成功",
+    )
+    .await?;
     let message = response.trim();
     Ok(ProviderTestResult {
         ok: true,
@@ -50,7 +62,7 @@ pub async fn test_provider(
     })
 }
 
-fn validate_llm_provider(provider: &ProviderConfig) -> AppResult<()> {
+pub(crate) fn validate_llm_provider(provider: &ProviderConfig) -> AppResult<()> {
     if provider.kind != "llm" {
         return Err(AppError::InvalidConfig(
             "选择的 Provider 不是语言模型配置".into(),
@@ -122,18 +134,20 @@ fn build_explanation_prompt(question: &Question, style: &str) -> AppResult<Strin
     ))
 }
 
-async fn call_text_model(
+pub(crate) async fn call_text_model(
     state: &AppState,
     provider: &ProviderConfig,
+    system_prompt: &str,
     prompt: &str,
 ) -> AppResult<String> {
     let api_key = state.secrets.get_optional(&provider.id)?;
     match provider.protocol.as_str() {
         "openai_compatible" => {
-            call_openai_compatible(state, provider, prompt, api_key.as_deref()).await
+            call_openai_compatible(state, provider, system_prompt, prompt, api_key.as_deref()).await
         }
         "anthropic_messages" => {
-            call_anthropic_messages(state, provider, prompt, api_key.as_deref()).await
+            call_anthropic_messages(state, provider, system_prompt, prompt, api_key.as_deref())
+                .await
         }
         other => Err(AppError::InvalidConfig(format!(
             "不支持的语言模型协议: {other}"
@@ -144,6 +158,7 @@ async fn call_text_model(
 async fn call_openai_compatible(
     state: &AppState,
     provider: &ProviderConfig,
+    system_prompt: &str,
     prompt: &str,
     api_key: Option<&str>,
 ) -> AppResult<String> {
@@ -151,7 +166,7 @@ async fn call_openai_compatible(
     let body = json!({
         "model": provider.model,
         "messages": [
-            { "role": "system", "content": "你负责为题库生成准确、可教学、格式规范的解析。" },
+            { "role": "system", "content": system_prompt },
             { "role": "user", "content": prompt }
         ]
     });
@@ -175,6 +190,7 @@ async fn call_openai_compatible(
 async fn call_anthropic_messages(
     state: &AppState,
     provider: &ProviderConfig,
+    system_prompt: &str,
     prompt: &str,
     api_key: Option<&str>,
 ) -> AppResult<String> {
@@ -185,7 +201,7 @@ async fn call_anthropic_messages(
     let body = json!({
         "model": provider.model,
         "max_tokens": 4096,
-        "system": "你负责为题库生成准确、可教学、格式规范的解析。",
+        "system": system_prompt,
         "messages": [{ "role": "user", "content": prompt }]
     });
     let request = state

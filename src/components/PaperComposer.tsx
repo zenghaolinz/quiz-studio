@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import type { Question, QuestionType } from "../domain/question";
-import { composePaper, moveQuestion } from "../domain/paper";
+import { composePaper, moveQuestion, reconcilePaperOrder } from "../domain/paper";
 import { buildQuestionOrder, type QuestionOrderMode } from "../domain/questionNavigation";
+import { deleteSavedPaper, listSavedPapers, savePaper, type SavedPaper } from "../features/papers/savedPapers";
 
 interface PaperComposerProps {
   questions: Question[];
+  bankId: string;
   modeLabel: string;
   onStart: (questionOrder: string[], orderMode: QuestionOrderMode) => void;
 }
@@ -18,7 +20,7 @@ const TYPE_LABEL: Record<QuestionType, string> = {
   essay: "论述题",
 };
 
-export function PaperComposer({ questions, modeLabel, onStart }: PaperComposerProps) {
+export function PaperComposer({ questions, bankId, modeLabel, onStart }: PaperComposerProps) {
   const presentTypes = useMemo(() => [...new Set(questions.map((question) => question.type))], [questions]);
   const initialQuotas = useMemo(() => Object.fromEntries(
     presentTypes.map((type) => [type, questions.filter((question) => question.type === type).length]),
@@ -28,6 +30,10 @@ export function PaperComposer({ questions, modeLabel, onStart }: PaperComposerPr
   const [quotas, setQuotas] = useState(initialQuotas);
   const [selectedOrder, setSelectedOrder] = useState(() => questions.map((question) => question.id));
   const [startMode, setStartMode] = useState<QuestionOrderMode>("custom");
+  const [savedPapers, setSavedPapers] = useState<SavedPaper[]>(() => listSavedPapers(bankId));
+  const [selectedPaperId, setSelectedPaperId] = useState("");
+  const [paperName, setPaperName] = useState("");
+  const [paperMessage, setPaperMessage] = useState<string | null>(null);
 
   const questionById = useMemo(() => new Map(questions.map((question) => [question.id, question])), [questions]);
   const selectedSet = useMemo(() => new Set(selectedOrder), [selectedOrder]);
@@ -53,6 +59,46 @@ export function PaperComposer({ questions, modeLabel, onStart }: PaperComposerPr
     onStart(order, startMode);
   }
 
+  function saveCurrentPaper() {
+    setPaperMessage(null);
+    try {
+      const saved = savePaper({
+        id: selectedPaperId || undefined,
+        bankId,
+        name: paperName,
+        questionOrder: selectedOrder,
+        orderMode: startMode,
+      });
+      setSelectedPaperId(saved.id);
+      setPaperName(saved.name);
+      setSavedPapers(listSavedPapers(bankId));
+      setPaperMessage(`已保存试卷：${saved.name}`);
+    } catch (caught) {
+      setPaperMessage(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  function loadSelectedPaper() {
+    const paper = savedPapers.find((item) => item.id === selectedPaperId);
+    if (!paper) { setPaperMessage("请先选择已保存试卷"); return; }
+    const restored = reconcilePaperOrder(questions, paper.questionOrder);
+    if (restored.length === 0) { setPaperMessage("这套试卷中的题目已不在当前题库中"); return; }
+    setSelectedOrder(restored);
+    setStartMode(paper.orderMode);
+    setPaperName(paper.name);
+    setPaperMessage(`已载入：${paper.name}`);
+  }
+
+  function removeSelectedPaper() {
+    const paper = savedPapers.find((item) => item.id === selectedPaperId);
+    if (!paper || !window.confirm(`确定删除已保存试卷“${paper.name}”吗？`)) return;
+    deleteSavedPaper(bankId, paper.id);
+    setSavedPapers(listSavedPapers(bankId));
+    setSelectedPaperId("");
+    setPaperName("");
+    setPaperMessage(`已删除：${paper.name}`);
+  }
+
   return (
     <div className="page-stack paper-composer-page">
       <section className="panel">
@@ -61,6 +107,29 @@ export function PaperComposer({ questions, modeLabel, onStart }: PaperComposerPr
           <span className="badge">已选 {selectedOrder.length} / {questions.length}</span>
         </div>
         <p className="muted-copy">先按题号范围和题型数量快速选题，再精确勾选并调整题目顺序。</p>
+
+        <div className="saved-paper-panel">
+          <div className="saved-paper-row">
+            <label className="field-label">已保存试卷
+              <select value={selectedPaperId} onChange={(event) => {
+                const id = event.target.value;
+                setSelectedPaperId(id);
+                const paper = savedPapers.find((item) => item.id === id);
+                setPaperName(paper?.name ?? "");
+              }}>
+                <option value="">另存为新试卷</option>
+                {savedPapers.map((paper) => <option key={paper.id} value={paper.id}>{paper.name}（{paper.questionOrder.length} 题）</option>)}
+              </select>
+            </label>
+            <button type="button" className="secondary-button" disabled={!selectedPaperId} onClick={loadSelectedPaper}>载入</button>
+            <button type="button" className="text-button danger-text" disabled={!selectedPaperId} onClick={removeSelectedPaper}>删除</button>
+          </div>
+          <div className="saved-paper-row">
+            <label className="field-label">试卷名称<input value={paperName} onChange={(event) => setPaperName(event.target.value)} placeholder="例如：期末重点卷" /></label>
+            <button type="button" className="secondary-button" disabled={selectedOrder.length === 0} onClick={saveCurrentPaper}>{selectedPaperId ? "更新保存" : "保存试卷"}</button>
+          </div>
+          {paperMessage ? <div className="alert">{paperMessage}</div> : null}
+        </div>
 
         <div className="paper-rule-grid">
           <label className="field-label">起始题号<input type="number" min={1} max={questions.length} value={rangeStart} onChange={(event) => setRangeStart(Math.max(1, Math.min(Number(event.target.value), rangeEnd)))} /></label>

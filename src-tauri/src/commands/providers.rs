@@ -31,3 +31,16 @@ pub fn upsert_provider_config(
     }
     Ok(config)
 }
+
+#[tauri::command]
+pub fn delete_provider_config(
+    provider_id: String,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    let deleted = state
+        .database
+        .delete_provider_config(&provider_id)
+        .map_err(command_error)?;
+    state.secrets.delete(&provider_id).map_err(command_error)?;
+    Ok(deleted)
+}

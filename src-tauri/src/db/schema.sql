@@ -66,6 +66,29 @@ CREATE TABLE IF NOT EXISTS import_jobs (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS assets (
+    id TEXT PRIMARY KEY,
+    sha256 TEXT NOT NULL UNIQUE,
+    relative_path TEXT NOT NULL UNIQUE,
+    original_name TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    byte_size INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS asset_links (
+    id TEXT PRIMARY KEY,
+    asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    parent_asset_id TEXT REFERENCES assets(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    provider_id TEXT,
+    model TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_asset_links_asset_id ON asset_links(asset_id);
+CREATE INDEX IF NOT EXISTS idx_asset_links_parent_id ON asset_links(parent_asset_id);
+
 CREATE TABLE IF NOT EXISTS test_sessions (
     id TEXT PRIMARY KEY,
     bank_id TEXT REFERENCES question_banks(id) ON DELETE SET NULL,

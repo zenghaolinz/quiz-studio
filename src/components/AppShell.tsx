@@ -6,6 +6,7 @@ interface AppShellProps {
   page: PageKey;
   onPageChange: (page: PageKey) => void;
   children: ReactNode;
+  currentModel: string;
 }
 
 const navItems: Array<{ key: PageKey; label: string; icon: string }> = [
@@ -18,7 +19,7 @@ const navItems: Array<{ key: PageKey; label: string; icon: string }> = [
   { key: "settings", label: "设置", icon: "⚙" },
 ];
 
-export function AppShell({ page, onPageChange, children }: AppShellProps) {
+export function AppShell({ page, onPageChange, children, currentModel }: AppShellProps) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -44,7 +45,7 @@ export function AppShell({ page, onPageChange, children }: AppShellProps) {
         </nav>
         <div className="sidebar-footer">
           <span className="status-dot" />
-          本地模式
+          <span title={`当前默认模型：${currentModel}`}>{currentModel}</span>
         </div>
       </aside>
       <main className="main-area">

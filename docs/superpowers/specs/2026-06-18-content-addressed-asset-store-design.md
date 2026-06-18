@@ -22,7 +22,7 @@
 - `byte_size`：文件大小；
 - `created_at`：创建时间。
 
-派生附件另外记录 `parent_asset_id`、`role`、`provider_id` 和 `model`。`role` 首版支持 `source`、`ocr_raw` 和 `ocr_markdown`，用于区分原始扫描件、OCR 原始 JSON 和标准化 Markdown。派生附件仍按内容哈希去重，但保留与来源附件和模型调用的关系。
+`asset_links` 另外记录 `asset_id`、`parent_asset_id`、`role`、`provider_id` 和 `model`。`role` 首版支持 `source`、`ocr_raw` 和 `ocr_markdown`，用于区分原始扫描件、OCR 原始 JSON 和标准化 Markdown。将关系从唯一内容记录中拆出后，同一份去重内容可以同时保留多次来源和模型调用关系。
 
 迁移版本升级到 3。已有数据库升级时创建表和哈希唯一索引；空数据库由 schema 建表后记录迁移版本。
 

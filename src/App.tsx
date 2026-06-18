@@ -1,7 +1,12 @@
-import { Suspense, lazy, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { AppShell, type PageKey } from "./components/AppShell";
 import type { ImportDraft } from "./import-core/types/question-draft";
 import type { QuestionBank } from "./domain/question";
+import { clearImportDraft, loadImportDraft, saveImportDraft } from "./features/import/importDraftPersistence";
+import type { ProviderConfig } from "./domain/ocr";
+import { currentModelLabel } from "./features/ai/currentModel";
+import { listProviders } from "./features/ocr/glmOcrApi";
+import { isTauriRuntime } from "./lib/tauri";
 
 const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
 const BanksPageModule = lazy(() => import("./pages/BanksPage").then((module) => ({ default: module.BanksPage })));
@@ -20,7 +25,13 @@ function PageLoading() {
 export default function App() {
   const [page, setPage] = useState<PageKey>("dashboard");
   const [selectedBank, setSelectedBank] = useState<QuestionBank | null>(null);
-  const [importDraft, setImportDraft] = useState<ImportDraft | null>(null);
+  const [importDraft, setImportDraft] = useState<ImportDraft | null>(() => loadImportDraft());
+  const [providers, setProviders] = useState<ProviderConfig[]>([]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    void listProviders().then(setProviders).catch(() => setProviders([]));
+  }, []);
 
   function openBank(bank: QuestionBank) {
     setSelectedBank(bank);
@@ -36,7 +47,7 @@ export default function App() {
   }
 
   return (
-    <AppShell page={page} onPageChange={setPage}>
+    <AppShell page={page} onPageChange={setPage} currentModel={currentModelLabel(providers)}>
       <Suspense fallback={<PageLoading />}>
         {page === "dashboard" ? (
           <DashboardPage onImport={() => setPage("import")} onCreateBank={() => setPage("banks")} />
@@ -59,24 +70,25 @@ export default function App() {
             onSelectBank={() => setPage("banks")}
           />
         ) : null}
-        {page === "ocr" ? <OcrPage /> : null}
+        {page === "ocr" ? <OcrPage onReview={(draft) => { setImportDraft(draft); setPage("import"); }} /> : null}
         {page === "import" && !importDraft ? (
-          <ImportSelectPage onLoaded={(draft) => setImportDraft(draft)} />
+          <ImportSelectPage onLoaded={(draft) => { saveImportDraft(draft); setImportDraft(draft); }} />
         ) : null}
         {page === "import" && importDraft ? (
           <ImportReviewPage
             draft={importDraft}
-            onCancel={() => { setImportDraft(null); }}
+            onCancel={() => { clearImportDraft(); setImportDraft(null); }}
             onImported={(bankId) => {
               // 导入成功：清除草稿，跳到题库列表（用户可打开刚导入的库）
               setImportDraft(null);
+              clearImportDraft();
               setSelectedBank(null);
               setPage("banks");
               void bankId;
             }}
           />
         ) : null}
-        {page === "settings" ? <SettingsPage /> : null}
+        {page === "settings" ? <SettingsPage onProvidersChanged={setProviders} /> : null}
       </Suspense>
     </AppShell>
   );

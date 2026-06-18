@@ -69,6 +69,12 @@ export interface ImportDraft {
   id: string;
   sourceFileId: string;
   sourceName?: string;
+  /** OCR 草稿关联的本地附件；只保存稳定 ID，不向前端暴露磁盘路径。 */
+  sourceAssets?: {
+    sourceAssetId?: string;
+    rawAssetId?: string;
+    markdownAssetId?: string;
+  };
   sourceType: "txt" | "markdown" | "docx" | "pdf" | "image";
   blocks: DocumentBlock[];
   questions: QuestionDraft[];

@@ -20,6 +20,9 @@ export interface OcrResult {
   rawJson?: unknown;
   warnings: string[];
   elapsedMs: number;
+  sourceAssetId?: string;
+  rawAssetId?: string;
+  markdownAssetId?: string;
 }
 
 export interface ProviderConfig {

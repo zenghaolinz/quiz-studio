@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod assets;
 pub mod banks;
 pub mod document_import;
 pub mod files;

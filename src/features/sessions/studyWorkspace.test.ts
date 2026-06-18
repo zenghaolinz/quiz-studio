@@ -26,6 +26,13 @@ const workspace: StudyWorkspace = {
   responses: { q1: ["a"] },
   submitted: { q1: ["a"] },
   revealed: {},
+  grades: {
+    q1: {
+      questionId: "q1", suggestedScore: 4, score: 4, maxScore: 5,
+      feedbackMarkdown: "已确认", criteria: [], providerId: "provider-a",
+      model: "test-model", elapsedMs: 10, gradedAt: "2026-06-18T00:00:00.000Z",
+    },
+  },
 };
 
 describe("study workspace", () => {

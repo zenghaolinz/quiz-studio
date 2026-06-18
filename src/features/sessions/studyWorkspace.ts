@@ -1,5 +1,6 @@
 import type { QuestionOrderMode } from "../../domain/questionNavigation";
 import type { TestSessionSummary } from "../../domain/session";
+import type { SubjectiveGrade } from "../../domain/grading";
 
 export type StudyMode = "practice" | "test";
 
@@ -14,6 +15,7 @@ export interface StudyWorkspace {
   submitted: Record<string, unknown>;
   revealed: Record<string, boolean>;
   summary?: TestSessionSummary | null;
+  grades?: Record<string, SubjectiveGrade>;
 }
 
 function workspaceKey(mode: StudyMode, bankId: string): string {

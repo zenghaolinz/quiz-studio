@@ -2,8 +2,11 @@ use tauri::State;
 
 use crate::{
     error::{command_error, AppError},
-    models::{GenerateExplanationInput, GenerateExplanationResult, ProviderTestResult},
-    services::ai,
+    models::{
+        AiGradingDraft, GenerateExplanationInput, GenerateExplanationResult,
+        GenerateSubjectiveGradeInput, ProviderTestResult,
+    },
+    services::{ai, ai_grading},
     state::AppState,
 };
 
@@ -40,6 +43,31 @@ pub async fn generate_question_explanation(
         model: provider.model,
         elapsed_ms: generated.elapsed_ms,
     })
+}
+
+#[tauri::command]
+pub async fn generate_subjective_grade(
+    input: GenerateSubjectiveGradeInput,
+    state: State<'_, AppState>,
+) -> Result<AiGradingDraft, String> {
+    let provider = state
+        .database
+        .get_provider_config(&input.provider_id)
+        .map_err(command_error)?
+        .ok_or_else(|| {
+            command_error(AppError::NotFound(format!(
+                "Provider {}",
+                input.provider_id
+            )))
+        })?;
+    let question = state
+        .database
+        .get_question(&input.question_id)
+        .map_err(command_error)?
+        .ok_or_else(|| command_error(AppError::NotFound(format!("题目 {}", input.question_id))))?;
+    ai_grading::generate_grade(state.inner(), &provider, &question, &input.response)
+        .await
+        .map_err(command_error)
 }
 
 #[tauri::command]

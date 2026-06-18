@@ -225,6 +225,7 @@ export function BankDetailPage({ bank, onBack, onPractice, onTest, onOpenSetting
 
       {!loading && questions.length > 0 ? (
         <AiExplanationPanel
+          bankId={bank.id}
           questions={questions}
           onQuestionUpdated={handleQuestionUpdated}
           onOpenSettings={onOpenSettings}

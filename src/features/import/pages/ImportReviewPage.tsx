@@ -12,6 +12,9 @@ import { SourcePreview } from "../components/SourcePreview";
 import { QuestionDraftEditor } from "../components/QuestionDraftEditor";
 import { ImportWarningPanel } from "../components/ImportWarningPanel";
 import { useImportStore } from "../stores/importStore";
+import { saveImportDraft } from "../importDraftPersistence";
+import { suggestedBankName } from "../ocrDraft";
+import { resolveImportTarget, type ImportTargetMode } from "../importTarget";
 
 interface ImportReviewPageProps {
   draft: ImportDraft;
@@ -27,13 +30,18 @@ export function ImportReviewPage({ draft, onCancel, onImported }: ImportReviewPa
   }, [draft, state.draft?.id, actions]);
   const current = state.draft ?? draft;
   const [banks, setBanks] = useState<QuestionBank[]>([]);
+  const [targetMode, setTargetMode] = useState<ImportTargetMode>("new");
   const [targetBankId, setTargetBankId] = useState<string>("");
-  const [newBankName, setNewBankName] = useState("");
+  const [newBankName, setNewBankName] = useState(() => suggestedBankName(draft.sourceName));
   const [expanded, setExpanded] = useState<number | null>(current.questions[0]?.order ?? null);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const validation = useMemo(() => validateDrafts(current.questions), [current.questions]);
+
+  useEffect(() => {
+    saveImportDraft(current);
+  }, [current]);
 
   useEffect(() => {
     void loadBanks();
@@ -57,9 +65,11 @@ export function ImportReviewPage({ draft, onCancel, onImported }: ImportReviewPa
       return;
     }
 
-    const requestedNewBankName = newBankName.trim();
-    if (!targetBankId && !requestedNewBankName) {
-      setError("请选择目标题库或输入新题库名称。");
+    let target;
+    try {
+      target = resolveImportTarget(targetMode, newBankName, targetBankId);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
       return;
     }
 
@@ -67,15 +77,15 @@ export function ImportReviewPage({ draft, onCancel, onImported }: ImportReviewPa
     let createdBankId: string | null = null;
     try {
       // 在创建新题库之前先完成全部草稿转换，避免转换失败时留下空题库。
-      const provisionalBankId = targetBankId || "__pending_new_bank__";
+      const provisionalBankId = target.kind === "existing" ? target.bankId : "__pending_new_bank__";
       const prepared = current.questions.map((question) =>
         convertDraftToQuestionInput(question, provisionalBankId),
       );
 
-      let bankId = targetBankId;
-      if (!bankId) {
+      let bankId = target.kind === "existing" ? target.bankId : "";
+      if (target.kind === "new") {
         const bank = await createQuestionBank({
-          name: requestedNewBankName,
+          name: target.name,
           subject: "导入",
         });
         bankId = bank.id;
@@ -109,13 +119,17 @@ export function ImportReviewPage({ draft, onCancel, onImported }: ImportReviewPa
         </div>
         <div className="toolbar-row">
           <div className="target-picker">
+            <select value={targetMode} onChange={(event) => setTargetMode(event.target.value as ImportTargetMode)}>
+              <option value="new">新建题库（默认）</option>
+              <option value="existing">追加到已有题库</option>
+            </select>
             <button type="button" className="secondary-button sm" onClick={() => void loadBanks()}>刷新题库列表</button>
-            <select value={targetBankId} onChange={(e) => setTargetBankId(e.target.value)}>
+            <select disabled={targetMode !== "existing"} value={targetBankId} onChange={(e) => setTargetBankId(e.target.value)}>
               <option value="">— 选择已有题库 —</option>
               {banks.map((b) => <option key={b.id} value={b.id}>{b.name}（{b.questionCount} 题）</option>)}
             </select>
             <span className="muted">或新建：</span>
-            <input placeholder="新题库名称" value={newBankName} onChange={(e) => setNewBankName(e.target.value)} />
+            <input disabled={targetMode !== "new"} placeholder="新题库名称" value={newBankName} onChange={(e) => setNewBankName(e.target.value)} />
           </div>
           <div className="toolbar-actions">
             <button type="button" className="ghost-button" onClick={onCancel}>取消</button>

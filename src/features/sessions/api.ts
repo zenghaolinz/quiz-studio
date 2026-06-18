@@ -1,5 +1,6 @@
 import { invokeCommand, isTauriRuntime } from "../../lib/tauri";
 import type { QuestionOrderMode } from "../../domain/questionNavigation";
+import type { SubjectiveGrade } from "../../domain/grading";
 
 export interface TestSessionSettings {
   currentIndex?: number;
@@ -14,6 +15,7 @@ export interface SavedAttempt {
   answerRevealed: boolean;
   isCorrect?: boolean | null;
   score?: number | null;
+  aiGrading?: SubjectiveGrade | null;
 }
 
 export interface TestSessionSnapshot {

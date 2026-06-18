@@ -11,14 +11,20 @@ export async function upsertProvider(
   return invokeCommand<ProviderConfig>("upsert_provider_config", { input });
 }
 
+export async function deleteProvider(providerId: string): Promise<boolean> {
+  return invokeCommand<boolean>("delete_provider_config", { providerId });
+}
+
 export async function runGlmOcr(
   providerId: string,
   imageDataUrl: string,
+  sourceName = "scan-image",
   prompt = "请识别文档内容并输出结构清晰的 Markdown；数学公式使用 LaTeX，化学式尽量保持原始符号。",
 ): Promise<OcrResult> {
   return invokeCommand<OcrResult>("run_glm_ocr", {
     providerId,
     imageDataUrl,
+    sourceName,
     prompt,
   });
 }

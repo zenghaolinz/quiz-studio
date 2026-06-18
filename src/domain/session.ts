@@ -2,7 +2,7 @@ import type { Question } from "./question";
 import { scoreObjectiveAnswer } from "./scoring";
 
 export type TestResponses = Record<string, unknown>;
-export type TestResultStatus = "correct" | "wrong" | "unanswered" | "pending";
+export type TestResultStatus = "correct" | "wrong" | "unanswered" | "pending" | "graded";
 
 export interface TestQuestionResult {
   questionId: string;

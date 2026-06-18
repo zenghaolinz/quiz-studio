@@ -2,6 +2,10 @@ import { useState } from "react";
 import { MarkdownContent } from "../components/MarkdownContent";
 import type { OcrProgress, OcrResult } from "../domain/ocr";
 import { runGlmOcr } from "../features/ocr/glmOcrApi";
+import { persistLocalOcrArtifacts } from "../features/ocr/ocrArtifactsApi";
+import { createOcrImportDraft } from "../features/import/ocrDraft";
+import { saveImportDraft } from "../features/import/importDraftPersistence";
+import type { ImportDraft } from "../import-core/types/question-draft";
 import { isTauriRuntime } from "../lib/tauri";
 
 async function fileToDataUrl(file: File): Promise<string> {
@@ -13,7 +17,11 @@ async function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-export function OcrPage() {
+interface OcrPageProps {
+  onReview: (draft: ImportDraft) => void;
+}
+
+export function OcrPage({ onReview }: OcrPageProps) {
   const [file, setFile] = useState<File | null>(null);
   const [engine, setEngine] = useState<"tesseract" | "glm">("tesseract");
   const [providerId, setProviderId] = useState("glm-ocr-local");
@@ -28,15 +36,30 @@ export function OcrPage() {
     setResult(null);
     setError(null);
     try {
+      const sourceDataUrl = await fileToDataUrl(file);
       const next = engine === "tesseract"
         ? await (await import("../features/ocr/tesseractEngine")).recognizeWithTesseract(file, { onProgress: setProgress })
-        : await runGlmOcr(providerId, await fileToDataUrl(file));
+        : await runGlmOcr(providerId, sourceDataUrl, file.name);
+      if (engine === "tesseract" && isTauriRuntime()) {
+        try {
+          Object.assign(next, await persistLocalOcrArtifacts(sourceDataUrl, file.name, next));
+        } catch (caught) {
+          next.warnings.push(`识别成功，但本地附件保存失败：${caught instanceof Error ? caught.message : String(caught)}`);
+        }
+      }
       setResult(next);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setRunning(false);
     }
+  }
+
+  function reviewResult() {
+    if (!file || !result) return;
+    const draft = createOcrImportDraft(result, file.name);
+    saveImportDraft(draft);
+    onReview(draft);
   }
 
   return (
@@ -69,10 +92,12 @@ export function OcrPage() {
               {running ? "正在识别…" : "开始识别"}
             </button>
             {progress && running ? (
-              <div><div className="progress-track"><span style={{ width: `${Math.round(progress.progress * 100)}%` }} /></div><small>{progress.message}</small></div>
+              <div role="progressbar" aria-label="OCR 识别进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress.progress * 100)}>
+                <div className="progress-track"><span style={{ width: `${Math.round(progress.progress * 100)}%` }} /></div><small>{progress.message}</small>
+              </div>
             ) : null}
             {engine === "glm" && !isTauriRuntime() ? <div className="alert warning">GLM-OCR 调用需要在 Tauri 桌面运行时中测试。</div> : null}
-            {error ? <div className="alert error">{error}</div> : null}
+            {error ? <div className="alert error" role="alert">{error}</div> : null}
           </div>
           <div className="ocr-preview">
             {file ? <img src={URL.createObjectURL(file)} alt="待识别文档预览" /> : <div className="preview-placeholder">尚未选择图片</div>}
@@ -84,6 +109,11 @@ export function OcrPage() {
           <div className="panel-heading"><div><span className="eyebrow">OCR Result</span><h3>识别结果</h3></div><span className="badge success">{result.elapsedMs} ms</span></div>
           {result.warnings.map((warning) => <div key={warning} className="alert warning">{warning}</div>)}
           <MarkdownContent>{result.markdown || "（未识别到文字）"}</MarkdownContent>
+          <div className="toolbar-actions">
+            <button type="button" className="primary-button" disabled={!result.markdown.trim()} onClick={reviewResult}>
+              校正并导入
+            </button>
+          </div>
         </section>
       ) : null}
     </div>

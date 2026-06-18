@@ -17,13 +17,17 @@ pub fn run() {
             let app_data_dir = app.path().app_data_dir()?;
             let database = Database::open(&app_data_dir.join("quiz-studio.sqlite3"))
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
-            let state = AppState::new(database)
+            let state = AppState::new(database, app_data_dir)
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
             app.manage(state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::health::health_check,
+            commands::assets::import_asset,
+            commands::assets::get_asset_info,
+            commands::assets::get_asset_details,
+            commands::assets::read_text_asset,
             commands::banks::list_question_banks,
             commands::banks::create_question_bank,
             commands::banks::update_question_bank,
@@ -39,8 +43,11 @@ pub fn run() {
             commands::document_import::extract_document_file,
             commands::providers::list_provider_configs,
             commands::providers::upsert_provider_config,
+            commands::providers::delete_provider_config,
             commands::ocr::run_glm_ocr,
+            commands::ocr::persist_local_ocr_artifacts,
             commands::ai::generate_question_explanation,
+            commands::ai::generate_subjective_grade,
             commands::ai::test_ai_provider,
         ])
         .run(tauri::generate_context!())

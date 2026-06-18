@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ProviderConfig, UpsertProviderInput } from "../domain/ocr";
 import { testAiProvider } from "../features/ai/api";
 import { AI_PROVIDER_PRESETS } from "../features/ai/providerPresets";
-import { listProviders, upsertProvider } from "../features/ocr/glmOcrApi";
+import { deleteProvider, listProviders, upsertProvider } from "../features/ocr/glmOcrApi";
 import { isTauriRuntime } from "../lib/tauri";
 
 interface LlmDraft {
@@ -15,7 +15,11 @@ interface LlmDraft {
   enabled: boolean;
 }
 
-export function SettingsPage() {
+interface SettingsPageProps {
+  onProvidersChanged?: (providers: ProviderConfig[]) => void;
+}
+
+export function SettingsPage({ onProvidersChanged }: SettingsPageProps) {
   const desktop = isTauriRuntime();
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [presetId, setPresetId] = useState("openai");
@@ -37,8 +41,25 @@ export function SettingsPage() {
   }, [desktop]);
 
   async function refreshProviders() {
-    try { setProviders(await listProviders()); }
+    try {
+      const next = await listProviders();
+      setProviders(next);
+      onProvidersChanged?.(next);
+    }
     catch (error) { setLlmMessage(error instanceof Error ? error.message : String(error)); }
+  }
+
+  async function removeProvider(provider: ProviderConfig) {
+    if (!window.confirm(`确定删除模型配置“${provider.name}”吗？保存的 API Key 也会一并删除。`)) return;
+    setLlmMessage(null);
+    try {
+      await deleteProvider(provider.id);
+      if (llm.id === provider.id) setLlm(presetToDraft(presetId));
+      setLlmMessage(`已删除：${provider.name}`);
+      await refreshProviders();
+    } catch (error) {
+      setLlmMessage(error instanceof Error ? error.message : String(error));
+    }
   }
 
   function applyPreset(nextId: string) {
@@ -145,7 +166,7 @@ export function SettingsPage() {
             <h3>已保存的语言模型</h3>
             {llmProviders.length === 0 ? <p className="help-text">尚未保存语言模型配置。保存后即可在题库页面批量补全解析。</p> : (
               <div className="provider-list">{llmProviders.map((provider) => (
-                <article className="provider-item" key={provider.id}><div><strong>{provider.name}</strong><span>{provider.model || "未填写模型"}</span><small>{provider.baseUrl}</small></div><button type="button" className="text-button" onClick={() => editProvider(provider)}>编辑</button></article>
+                <article className="provider-item" key={provider.id}><div><strong>{provider.name}</strong><span>{provider.model || "未填写模型"}</span><small>{provider.baseUrl}</small></div><div className="button-row"><button type="button" className="text-button" onClick={() => editProvider(provider)}>编辑</button><button type="button" className="text-button danger-text" onClick={() => void removeProvider(provider)}>删除</button></div></article>
               ))}</div>
             )}
           </div>

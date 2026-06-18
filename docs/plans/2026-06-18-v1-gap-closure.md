@@ -72,6 +72,8 @@
 
 ### Task 5: AI 主观题评分
 
+**状态：已完成。** 自动采用合法 AI 分数，保留可选人工调分，并持久化评分明细。
+
 **Files:**
 - Modify: `src-tauri/src/services/ai.rs`
 - Modify: `src-tauri/src/commands/ai.rs`
@@ -79,11 +81,13 @@
 - Modify: `src/pages/TestPage.tsx`
 
 1. 先写结构化评分解析、边界分数和无评分点回退测试。
-2. 实现评分命令、人工确认和逐题持久化。
+2. 实现评分命令、自动计分、可选调分和逐题持久化。
 3. 显示 Provider、耗时、估算用量和可重试错误。
 4. 验证 AI 失败不影响本地提交和已有作答。
 
 ### Task 6: 附件、任务恢复与收尾
+
+**状态：进行中。** OCR 内容寻址附件仓库、可恢复导入草稿、AI 批次检查点续做和可访问性收尾已完成；OCR 在途请求恢复仍待后续批次。
 
 **Files:**
 - Modify: `src-tauri/src/db/schema.sql`
