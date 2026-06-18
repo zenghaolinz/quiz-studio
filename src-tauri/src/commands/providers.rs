@@ -7,10 +7,11 @@ use crate::{
 };
 
 #[tauri::command]
-pub fn list_provider_configs(
-    state: State<'_, AppState>,
-) -> Result<Vec<ProviderConfig>, String> {
-    state.database.list_provider_configs().map_err(command_error)
+pub fn list_provider_configs(state: State<'_, AppState>) -> Result<Vec<ProviderConfig>, String> {
+    state
+        .database
+        .list_provider_configs()
+        .map_err(command_error)
 }
 
 #[tauri::command]
@@ -23,7 +24,10 @@ pub fn upsert_provider_config(
         .upsert_provider_config(&input)
         .map_err(command_error)?;
     if let Some(api_key) = input.api_key.as_deref().filter(|value| !value.is_empty()) {
-        state.secrets.set(&config.id, api_key).map_err(command_error)?;
+        state
+            .secrets
+            .set(&config.id, api_key)
+            .map_err(command_error)?;
     }
     Ok(config)
 }

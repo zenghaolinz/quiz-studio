@@ -7,6 +7,7 @@ import type {
 } from "../../domain/question";
 import { questionSchema } from "../../domain/question";
 import { invokeCommand, isTauriRuntime } from "../../lib/tauri";
+import type { PortableBank } from "./portableBank";
 
 interface BrowserDatabase {
   banks: QuestionBank[];
@@ -164,6 +165,33 @@ export async function deleteQuestionBank(id: string): Promise<void> {
   return invokeCommand<void>("delete_question_bank", { id });
 }
 
+export async function updateQuestionBank(
+  id: string,
+  input: CreateQuestionBankInput,
+): Promise<QuestionBank> {
+  if (!isTauriRuntime()) {
+    const name = input.name.trim();
+    if (!name) throw new Error("题库名称不能为空");
+    const database = readBrowserDb();
+    const existing = database.banks.find((bank) => bank.id === id);
+    if (!existing) throw new Error("题库不存在");
+    const updated: QuestionBank = {
+      ...existing,
+      name,
+      subject: input.subject ?? null,
+      description: input.description ?? null,
+      updatedAt: now(),
+    };
+    database.banks = database.banks.map((bank) => bank.id === id ? updated : bank);
+    writeBrowserDb(database);
+    return {
+      ...updated,
+      questionCount: database.questions.filter((question) => question.bankId === id).length,
+    };
+  }
+  return invokeCommand<QuestionBank>("update_question_bank", { id, input });
+}
+
 export async function listQuestions(bankId: string): Promise<Question[]> {
   if (!isTauriRuntime()) {
     return readBrowserDb().questions.filter((question) => question.bankId === bankId);
@@ -212,6 +240,28 @@ export async function createQuestionsBatch(
   return invokeCommand<number>("create_questions_batch", { bankId, questions });
 }
 
+export async function updateQuestion(id: string, input: CreateQuestionInput): Promise<Question> {
+  if (!isTauriRuntime()) {
+    const database = readBrowserDb();
+    const existing = database.questions.find((question) => question.id === id);
+    if (!existing) throw new Error("题目不存在");
+    const updated = questionSchema.parse({
+      ...existing,
+      ...input,
+      id,
+      bankId: input.bankId,
+      explanationMarkdown: input.explanationMarkdown ?? null,
+      updatedAt: now(),
+    });
+    database.questions = database.questions.map((question) => question.id === id ? updated : question);
+    touchBank(database, input.bankId);
+    writeBrowserDb(database);
+    return updated;
+  }
+  const raw = await invokeCommand<unknown>("update_question", { id, input });
+  return questionSchema.parse(raw);
+}
+
 export async function deleteQuestion(id: string): Promise<void> {
   if (!isTauriRuntime()) {
     const database = readBrowserDb();
@@ -223,4 +273,31 @@ export async function deleteQuestion(id: string): Promise<void> {
     return;
   }
   return invokeCommand<void>("delete_question", { id });
+}
+
+/** 恢复可移植题库。创建和批量写入任一步失败时清理新建题库。 */
+export async function restoreQuestionBank(portable: PortableBank): Promise<QuestionBank> {
+  const bank = await createQuestionBank({
+    name: portable.bank.name,
+    subject: portable.bank.subject ?? undefined,
+    description: portable.bank.description ?? undefined,
+  });
+  try {
+    await createQuestionsBatch(
+      bank.id,
+      portable.questions.map((question) => ({
+        ...question,
+        bankId: bank.id,
+        explanationMarkdown: question.explanationMarkdown ?? undefined,
+      })),
+    );
+    return { ...bank, questionCount: portable.questions.length };
+  } catch (error) {
+    try {
+      await deleteQuestionBank(bank.id);
+    } catch {
+      // 保留原始恢复错误；桌面事务化恢复将在后续 IPC 中进一步收紧。
+    }
+    throw error;
+  }
 }

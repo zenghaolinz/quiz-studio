@@ -14,16 +14,17 @@ pub struct ReadTextFileResult {
 /// 路径由前端 dialog 选择，本地单机可信，不做额外路径校验。
 #[tauri::command]
 pub async fn read_text_file(path: String) -> Result<ReadTextFileResult, String> {
-    tauri::async_runtime::spawn_blocking(move || read_text_file_blocking(path).map_err(command_error))
-        .await
-        .map_err(|e| command_error(AppError::Runtime(e.to_string())))?
+    tauri::async_runtime::spawn_blocking(move || {
+        read_text_file_blocking(path).map_err(command_error)
+    })
+    .await
+    .map_err(|e| command_error(AppError::Runtime(e.to_string())))?
 }
 
 fn read_text_file_blocking(path: String) -> AppResult<ReadTextFileResult> {
     let path = PathBuf::from(&path);
-    let bytes = std::fs::read(&path).map_err(|e| {
-        AppError::Io(std::io::Error::other(format!("读取文件失败: {e}")))
-    })?;
+    let bytes = std::fs::read(&path)
+        .map_err(|e| AppError::Io(std::io::Error::other(format!("读取文件失败: {e}"))))?;
 
     // 去掉 UTF-8 BOM
     let stripped = if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {

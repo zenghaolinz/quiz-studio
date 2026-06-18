@@ -11,6 +11,22 @@ export interface PickedTextFileResult extends ReadTextFileResult {
   sourceFileId: string;
 }
 
+export type ImportSourceType = "txt" | "markdown" | "docx" | "pdf";
+
+export interface PickedImportFileResult extends PickedTextFileResult {
+  sourceType: ImportSourceType;
+  needsOcr: boolean;
+  warnings: string[];
+  pages?: Array<{ page: number; text: string }>;
+}
+
+interface ExtractedDocumentResult {
+  text: string;
+  pages: Array<{ page: number; text: string }>;
+  needsOcr: boolean;
+  warnings: string[];
+}
+
 /** 调用系统文件选择框，限定 txt/md/markdown。返回路径或 null（用户取消）。 */
 export async function pickTextFile(): Promise<string | null> {
   if (!isTauriRuntime()) return null;
@@ -95,9 +111,41 @@ export async function pickAndReadTextFile(): Promise<PickedTextFileResult | null
   };
 }
 
+/** 选择 TXT/Markdown/DOCX/PDF；复杂文档由 Rust 提取文字后进入同一校正管线。 */
+export async function pickAndReadImportFile(): Promise<PickedImportFileResult | null> {
+  if (!isTauriRuntime()) {
+    const selected = await pickAndReadTextFile();
+    return selected ? { ...selected, sourceType: inferSourceType(selected.sourceName), needsOcr: false, warnings: [] } : null;
+  }
+  const path = await open({
+    multiple: false,
+    filters: [{ name: "题库文档", extensions: ["txt", "md", "markdown", "docx", "pdf"] }],
+  });
+  if (typeof path !== "string") return null;
+  const sourceName = path.split(/[\\/]/).pop() ?? path;
+  const sourceType = inferSourceType(sourceName);
+  if (sourceType === "txt" || sourceType === "markdown") {
+    const read = await readTextFile(path);
+    return { ...read, sourceName, sourceFileId: path, sourceType, needsOcr: false, warnings: [] };
+  }
+  const extracted = await invokeCommand<ExtractedDocumentResult>("extract_document_file", { path });
+  return {
+    content: extracted.text,
+    encoding: "document",
+    sourceName,
+    sourceFileId: path,
+    sourceType,
+    needsOcr: extracted.needsOcr,
+    warnings: extracted.warnings,
+    pages: extracted.pages,
+  };
+}
+
 /** 推断 sourceType：.md/.markdown → markdown，其余 → txt。 */
-export function inferSourceType(filename: string): "txt" | "markdown" {
+export function inferSourceType(filename: string): ImportSourceType {
   const lower = filename.toLowerCase();
   if (lower.endsWith(".md") || lower.endsWith(".markdown")) return "markdown";
+  if (lower.endsWith(".docx")) return "docx";
+  if (lower.endsWith(".pdf")) return "pdf";
   return "txt";
 }

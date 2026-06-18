@@ -1,6 +1,6 @@
 [package]
 name = "quiz-studio"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local-first cross-platform quiz application"
 authors = ["Quiz Studio Contributors"]
 edition = "2021"
@@ -25,6 +25,9 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 keyring = { version = "3", default-features = false }
 url = "2"
 encoding_rs = "0.8"
+zip = "2.4"
+roxmltree = "0.20"
+lopdf = "0.36"
 
 # Platform credential-store backends. keyring 3.x gates native backends behind
 # non-default features; without them set() silently no-ops and get() returns

@@ -16,7 +16,22 @@ pub fn create_question_bank(
     input: CreateQuestionBankInput,
     state: State<'_, AppState>,
 ) -> Result<QuestionBank, String> {
-    state.database.create_question_bank(input).map_err(command_error)
+    state
+        .database
+        .create_question_bank(input)
+        .map_err(command_error)
+}
+
+#[tauri::command]
+pub fn update_question_bank(
+    id: String,
+    input: CreateQuestionBankInput,
+    state: State<'_, AppState>,
+) -> Result<QuestionBank, String> {
+    state
+        .database
+        .update_question_bank(&id, input)
+        .map_err(command_error)
 }
 
 /// 删除题库，其下题目通过外键 ON DELETE CASCADE 自动清理。

@@ -11,7 +11,7 @@ use crate::{
     error::{AppError, AppResult},
     models::{
         CreateQuestionBankInput, CreateQuestionInput, ProviderConfig, Question, QuestionBank,
-        UpsertProviderInput,
+        TestAttempt, TestSessionSnapshot, UpsertProviderInput,
     },
 };
 
@@ -119,6 +119,34 @@ impl Database {
         })
     }
 
+    pub fn update_question_bank(
+        &self,
+        id: &str,
+        input: CreateQuestionBankInput,
+    ) -> AppResult<QuestionBank> {
+        let name = input.name.trim();
+        if name.is_empty() {
+            return Err(AppError::InvalidConfig("题库名称不能为空".into()));
+        }
+        let now = Utc::now().to_rfc3339();
+        {
+            let connection = self.connection()?;
+            let affected = connection.execute(
+                "UPDATE question_banks
+                 SET name = ?1, subject = ?2, description = ?3, updated_at = ?4
+                 WHERE id = ?5",
+                params![name, input.subject, input.description, now, id],
+            )?;
+            if affected == 0 {
+                return Err(AppError::NotFound(format!("题库 {} 不存在", id)));
+            }
+        }
+        self.list_question_banks()?
+            .into_iter()
+            .find(|bank| bank.id == id)
+            .ok_or_else(|| AppError::NotFound(format!("题库 {} 不存在", id)))
+    }
+
     pub fn list_questions(&self, bank_id: &str) -> AppResult<Vec<Question>> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
@@ -168,6 +196,50 @@ impl Database {
             connection.execute(
                 "UPDATE question_banks SET updated_at = ?1 WHERE id = ?2",
                 params![now, bank_id],
+            )?;
+        }
+        self.get_question(id)?
+            .ok_or_else(|| AppError::NotFound(format!("题目 {} 不存在", id)))
+    }
+
+    pub fn update_question(&self, id: &str, input: CreateQuestionInput) -> AppResult<Question> {
+        if input.stem_markdown.trim().is_empty() {
+            return Err(AppError::InvalidConfig("题干不能为空".into()));
+        }
+        let max_score = input.max_score.unwrap_or(1.0);
+        if max_score <= 0.0 {
+            return Err(AppError::InvalidConfig("分值必须大于 0".into()));
+        }
+        let options_json = serde_json::to_string(&input.options)?;
+        let answer_json = serde_json::to_string(&input.answer)?;
+        let tags_json = serde_json::to_string(&input.tags.clone().unwrap_or_default())?;
+        let now = Utc::now().to_rfc3339();
+        {
+            let connection = self.connection()?;
+            let affected = connection.execute(
+                "UPDATE questions SET bank_id = ?1, type = ?2, stem_markdown = ?3,
+                        options_json = ?4, answer_json = ?5, explanation_markdown = ?6,
+                        max_score = ?7, tags_json = ?8, updated_at = ?9
+                 WHERE id = ?10",
+                params![
+                    input.bank_id,
+                    input.question_type,
+                    input.stem_markdown.trim(),
+                    options_json,
+                    answer_json,
+                    input.explanation_markdown,
+                    max_score,
+                    tags_json,
+                    now,
+                    id,
+                ],
+            )?;
+            if affected == 0 {
+                return Err(AppError::NotFound(format!("题目 {} 不存在", id)));
+            }
+            connection.execute(
+                "UPDATE question_banks SET updated_at = ?1 WHERE id = ?2",
+                params![now, input.bank_id],
             )?;
         }
         self.get_question(id)?
@@ -255,6 +327,102 @@ impl Database {
         }
         // questions 通过 ON DELETE CASCADE 自动清理（外键已启用）
         Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn save_test_session(
+        &self,
+        session_id: Option<&str>,
+        bank_id: &str,
+        status: &str,
+        settings: &serde_json::Value,
+        attempts: &[(String, serde_json::Value, bool, Option<bool>, Option<f64>)],
+        score: Option<f64>,
+        max_score: Option<f64>,
+    ) -> AppResult<TestSessionSnapshot> {
+        if !matches!(status, "in_progress" | "submitted") {
+            return Err(AppError::InvalidConfig("自测状态无效".into()));
+        }
+        let id = session_id
+            .map(str::to_owned)
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+        let now = Utc::now().to_rfc3339();
+        let settings_json = serde_json::to_string(settings)?;
+        let mut connection = self.connection()?;
+        let tx = connection.transaction()?;
+        let existing_started: Option<String> = tx
+            .query_row(
+                "SELECT started_at FROM test_sessions WHERE id = ?1",
+                [&id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let started_at = existing_started.unwrap_or_else(|| now.clone());
+        tx.execute(
+            "INSERT INTO test_sessions (id, bank_id, mode, status, settings_json, score, max_score, started_at, submitted_at)
+             VALUES (?1, ?2, 'test', ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET status=excluded.status, settings_json=excluded.settings_json,
+                 score=excluded.score, max_score=excluded.max_score, submitted_at=excluded.submitted_at",
+            params![id, bank_id, status, settings_json, score, max_score, started_at,
+                if status == "submitted" { Some(now.clone()) } else { None }],
+        )?;
+        tx.execute("DELETE FROM attempts WHERE session_id = ?1", [&id])?;
+        for (question_id, response, revealed, is_correct, attempt_score) in attempts {
+            tx.execute(
+                "INSERT INTO attempts (id, session_id, question_id, response_json, is_correct, score, answer_revealed, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+                params![Uuid::new_v4().to_string(), id, question_id, serde_json::to_string(response)?,
+                    is_correct.map(i64::from), attempt_score, i64::from(*revealed), now],
+            )?;
+        }
+        tx.commit()?;
+        drop(connection);
+        self.get_test_session(&id)?
+            .ok_or_else(|| AppError::NotFound("自测会话不存在".into()))
+    }
+
+    pub fn get_active_test_session(&self, bank_id: &str) -> AppResult<Option<TestSessionSnapshot>> {
+        let id = {
+            let connection = self.connection()?;
+            connection.query_row(
+                "SELECT id FROM test_sessions WHERE bank_id = ?1 AND status = 'in_progress' ORDER BY started_at DESC LIMIT 1",
+                [bank_id], |row| row.get::<_, String>(0),
+            ).optional()?
+        };
+        match id {
+            Some(id) => self.get_test_session(&id),
+            None => Ok(None),
+        }
+    }
+
+    fn get_test_session(&self, id: &str) -> AppResult<Option<TestSessionSnapshot>> {
+        let connection = self.connection()?;
+        let mut snapshot = connection.query_row(
+            "SELECT id, bank_id, status, settings_json, score, max_score, started_at, submitted_at FROM test_sessions WHERE id = ?1",
+            [id], |row| {
+                let settings: String = row.get(3)?;
+                Ok(TestSessionSnapshot { id: row.get(0)?, bank_id: row.get(1)?, status: row.get(2)?,
+                    settings: serde_json::from_str(&settings).unwrap_or_default(), score: row.get(4)?, max_score: row.get(5)?,
+                    started_at: row.get(6)?, submitted_at: row.get(7)?, attempts: vec![] })
+            }).optional()?;
+        if let Some(session) = snapshot.as_mut() {
+            let mut statement = connection.prepare(
+                "SELECT id, question_id, response_json, is_correct, score, answer_revealed FROM attempts WHERE session_id = ?1 ORDER BY created_at ASC")?;
+            session.attempts = statement
+                .query_map([id], |row| {
+                    let response: String = row.get(2)?;
+                    Ok(TestAttempt {
+                        id: row.get(0)?,
+                        question_id: row.get(1)?,
+                        response: serde_json::from_str(&response).unwrap_or_default(),
+                        is_correct: row.get::<_, Option<i64>>(3)?.map(|value| value != 0),
+                        score: row.get(4)?,
+                        answer_revealed: row.get::<_, i64>(5)? != 0,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+        }
+        Ok(snapshot)
     }
 
     pub fn list_provider_configs(&self) -> AppResult<Vec<ProviderConfig>> {
@@ -601,6 +769,72 @@ mod tests {
     }
 
     #[test]
+    fn updates_question_bank_metadata() {
+        let db = temp_db();
+        let bank = db
+            .create_question_bank(CreateQuestionBankInput {
+                name: "旧名称".into(),
+                subject: None,
+                description: None,
+            })
+            .unwrap();
+
+        let updated = db
+            .update_question_bank(
+                &bank.id,
+                CreateQuestionBankInput {
+                    name: "  新名称  ".into(),
+                    subject: Some("数学".into()),
+                    description: Some("代数".into()),
+                },
+            )
+            .unwrap();
+
+        assert_eq!(updated.name, "新名称");
+        assert_eq!(updated.subject.as_deref(), Some("数学"));
+        assert_eq!(updated.description.as_deref(), Some("代数"));
+        assert!(matches!(
+            db.update_question_bank(
+                "missing",
+                CreateQuestionBankInput {
+                    name: "x".into(),
+                    subject: None,
+                    description: None,
+                }
+            ),
+            Err(AppError::NotFound(_))
+        ));
+    }
+
+    #[test]
+    fn updates_complete_question() {
+        let db = temp_db();
+        let bank = db
+            .create_question_bank(CreateQuestionBankInput {
+                name: "edit".into(),
+                subject: None,
+                description: None,
+            })
+            .unwrap();
+        let question = db
+            .create_question(sample_question_input(&bank.id, "旧题干"))
+            .unwrap();
+        let mut input = sample_question_input(&bank.id, "新题干");
+        input.max_score = Some(3.0);
+        input.tags = Some(vec!["新标签".into()]);
+
+        let updated = db.update_question(&question.id, input).unwrap();
+
+        assert_eq!(updated.stem_markdown, "新题干");
+        assert_eq!(updated.max_score, 3.0);
+        assert_eq!(updated.tags, vec!["新标签"]);
+        assert!(matches!(
+            db.update_question("missing", sample_question_input(&bank.id, "x")),
+            Err(AppError::NotFound(_))
+        ));
+    }
+
+    #[test]
     fn migrate_records_version_one() {
         let db = temp_db();
         let v: i64 = db
@@ -611,5 +845,65 @@ mod tests {
             })
             .unwrap();
         assert_eq!(v, 1);
+    }
+
+    #[test]
+    fn saves_and_recovers_active_test_session() {
+        let db = temp_db();
+        let bank = db
+            .create_question_bank(CreateQuestionBankInput {
+                name: "session".into(),
+                subject: None,
+                description: None,
+            })
+            .unwrap();
+        let question = db
+            .create_question(sample_question_input(&bank.id, "题目"))
+            .unwrap();
+        let saved = db
+            .save_test_session(
+                None,
+                &bank.id,
+                "in_progress",
+                &serde_json::json!({"currentIndex": 0}),
+                &[(
+                    question.id.clone(),
+                    serde_json::json!(["b"]),
+                    false,
+                    None,
+                    None,
+                )],
+                None,
+                None,
+            )
+            .unwrap();
+
+        let recovered = db.get_active_test_session(&bank.id).unwrap().unwrap();
+        assert_eq!(recovered.id, saved.id);
+        assert_eq!(recovered.attempts.len(), 1);
+        assert_eq!(recovered.attempts[0].response, serde_json::json!(["b"]));
+    }
+
+    #[test]
+    fn submitted_session_is_not_returned_as_active() {
+        let db = temp_db();
+        let bank = db
+            .create_question_bank(CreateQuestionBankInput {
+                name: "submitted".into(),
+                subject: None,
+                description: None,
+            })
+            .unwrap();
+        db.save_test_session(
+            None,
+            &bank.id,
+            "submitted",
+            &serde_json::json!({}),
+            &[],
+            Some(0.0),
+            Some(0.0),
+        )
+        .unwrap();
+        assert!(db.get_active_test_session(&bank.id).unwrap().is_none());
     }
 }

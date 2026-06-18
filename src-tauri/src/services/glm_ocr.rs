@@ -19,7 +19,9 @@ pub async fn run(
         return Err(AppError::InvalidConfig("该 OCR Provider 已被禁用".into()));
     }
     if !image_data_url.starts_with("data:image/") {
-        return Err(AppError::InvalidConfig("当前骨架只接受图片 data URL".into()));
+        return Err(AppError::InvalidConfig(
+            "当前骨架只接受图片 data URL".into(),
+        ));
     }
 
     let started_at = Instant::now();
@@ -27,14 +29,8 @@ pub async fn run(
     let raw_json = match provider.protocol.as_str() {
         "glm_sdk" => call_glm_sdk(state, provider, image_data_url, api_key.as_deref()).await?,
         "openai_compatible" => {
-            call_openai_compatible(
-                state,
-                provider,
-                image_data_url,
-                prompt,
-                api_key.as_deref(),
-            )
-            .await?
+            call_openai_compatible(state, provider, image_data_url, prompt, api_key.as_deref())
+                .await?
         }
         other => {
             return Err(AppError::InvalidConfig(format!(

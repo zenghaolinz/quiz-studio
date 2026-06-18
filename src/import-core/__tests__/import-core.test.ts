@@ -140,6 +140,28 @@ describe("parseTxt — 题型与排版符号", () => {
   });
 });
 
+describe("extracted document import", () => {
+  it("routes DOCX and PDF extracted text through the rule parser", () => {
+    for (const sourceType of ["docx", "pdf"] as const) {
+      const draft = parseImport(sourceType, T1, { sourceFileId: `${sourceType}:fixture` });
+      expect(draft.sourceType).toBe(sourceType);
+      expect(draft.questions).toHaveLength(1);
+      expect(draft.questions[0].answer).toEqual({ kind: "choice", optionLabels: ["B"] });
+    }
+  });
+
+  it("preserves PDF page numbers on document blocks", () => {
+    const draft = parseImport("pdf", `${T1}\n2. 第二页题目\n答案：对`, {
+      sourceFileId: "pdf:fixture",
+      pages: [
+        { page: 1, text: T1 },
+        { page: 2, text: "2. 第二页题目\n答案：对" },
+      ],
+    });
+    expect(draft.blocks.find((block) => block.text.includes("第二页题目"))?.page).toBe(2);
+  });
+});
+
 describe("多题切分与边界", () => {
   it("连续多题，各自独立且 sourceRange 连续", () => {
     const text = `${T1}\n${T2}`;

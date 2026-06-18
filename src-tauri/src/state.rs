@@ -66,7 +66,9 @@ mod tests {
         let value = "smoke-test-api-key";
 
         // Clean up any leftover, then set + read + clear.
-        store.set(&key, value).expect("set should succeed on platform backend");
+        store
+            .set(&key, value)
+            .expect("set should succeed on platform backend");
         let read = store.get_optional(&key).expect("get should not error");
         assert_eq!(read.as_deref(), Some(value));
 

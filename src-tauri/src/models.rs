@@ -116,3 +116,50 @@ pub struct ProviderTestResult {
     pub message: String,
     pub elapsed_ms: u128,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestAttempt {
+    pub id: String,
+    pub question_id: String,
+    pub response: serde_json::Value,
+    pub is_correct: Option<bool>,
+    pub score: Option<f64>,
+    pub answer_revealed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestSessionSnapshot {
+    pub id: String,
+    pub bank_id: String,
+    pub status: String,
+    pub settings: serde_json::Value,
+    pub score: Option<f64>,
+    pub max_score: Option<f64>,
+    pub started_at: String,
+    pub submitted_at: Option<String>,
+    pub attempts: Vec<TestAttempt>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveTestAttemptInput {
+    pub question_id: String,
+    pub response: serde_json::Value,
+    pub answer_revealed: bool,
+    pub is_correct: Option<bool>,
+    pub score: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveTestSessionInput {
+    pub id: Option<String>,
+    pub bank_id: String,
+    pub status: String,
+    pub settings: serde_json::Value,
+    pub score: Option<f64>,
+    pub max_score: Option<f64>,
+    pub attempts: Vec<SaveTestAttemptInput>,
+}

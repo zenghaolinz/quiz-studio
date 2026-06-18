@@ -37,15 +37,31 @@ export { validateDrafts } from "./validation/validate-drafts";
 export interface ParseImportOptions {
   sourceFileId: string;
   sourceName?: string;
+  pages?: Array<{ page: number; text: string }>;
 }
 
 /** 解析文本为 ImportDraft。sourceType 决定走 TXT 还是 Markdown 管线。 */
 export function parseImport(
-  sourceType: "txt" | "markdown",
+  sourceType: "txt" | "markdown" | "docx" | "pdf",
   text: string,
   options: ParseImportOptions,
 ): ImportDraft {
   const parsed = sourceType === "markdown" ? parseMarkdown(text) : parseTxt(text);
+  if (options.pages?.length) {
+    let firstLine = 1;
+    const ranges = options.pages.map((page) => {
+      const lineCount = Math.max(page.text.split(/\r?\n/).length, 1);
+      const range = { page: page.page, firstLine, lastLine: firstLine + lineCount - 1 };
+      firstLine += lineCount;
+      return range;
+    });
+    for (const block of parsed.blocks) {
+      block.page = ranges.find((range) => block.lineNumber >= range.firstLine && block.lineNumber <= range.lastLine)?.page;
+    }
+    for (const question of parsed.questions) {
+      if (question.sourceRange) question.sourceRange.page = parsed.blocks[question.sourceRange.startBlock]?.page;
+    }
+  }
   const { warnings, hasErrors } = validateDrafts(parsed.questions);
 
   return {

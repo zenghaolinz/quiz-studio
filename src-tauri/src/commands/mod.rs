@@ -1,7 +1,9 @@
 pub mod ai;
 pub mod banks;
+pub mod document_import;
 pub mod files;
 pub mod health;
 pub mod ocr;
 pub mod providers;
 pub mod questions;
+pub mod sessions;
