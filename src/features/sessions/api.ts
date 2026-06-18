@@ -1,4 +1,11 @@
 import { invokeCommand, isTauriRuntime } from "../../lib/tauri";
+import type { QuestionOrderMode } from "../../domain/questionNavigation";
+
+export interface TestSessionSettings {
+  currentIndex?: number;
+  questionOrder?: string[];
+  orderMode?: QuestionOrderMode;
+}
 
 export interface SavedAttempt {
   id?: string;
@@ -13,7 +20,7 @@ export interface TestSessionSnapshot {
   id: string;
   bankId: string;
   status: "in_progress" | "submitted";
-  settings: { currentIndex?: number };
+  settings: TestSessionSettings;
   score?: number | null;
   maxScore?: number | null;
   startedAt: string;
@@ -25,7 +32,7 @@ export interface SaveTestSessionInput {
   id?: string;
   bankId: string;
   status: "in_progress" | "submitted";
-  settings: { currentIndex: number };
+  settings: TestSessionSettings & { currentIndex: number };
   score?: number | null;
   maxScore?: number | null;
   attempts: SavedAttempt[];
