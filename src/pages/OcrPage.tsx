@@ -1,63 +1,46 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { MarkdownContent } from "../components/MarkdownContent";
-import type { OcrProgress, OcrResult } from "../domain/ocr";
-import { runGlmOcr } from "../features/ocr/glmOcrApi";
-import { persistLocalOcrArtifacts } from "../features/ocr/ocrArtifactsApi";
+import type { OcrResult } from "../domain/ocr";
+import { OcrQueuePanel } from "../features/ocr/OcrQueuePanel";
+import { useOcrQueue } from "../features/ocr/useOcrQueue";
 import { createOcrImportDraft } from "../features/import/ocrDraft";
 import { saveImportDraft } from "../features/import/importDraftPersistence";
 import type { ImportDraft } from "../import-core/types/question-draft";
 import { isTauriRuntime } from "../lib/tauri";
-
-async function fileToDataUrl(file: File): Promise<string> {
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error ?? new Error("读取图片失败"));
-    reader.readAsDataURL(file);
-  });
-}
 
 interface OcrPageProps {
   onReview: (draft: ImportDraft) => void;
 }
 
 export function OcrPage({ onReview }: OcrPageProps) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [engine, setEngine] = useState<"tesseract" | "glm">("tesseract");
   const [providerId, setProviderId] = useState("glm-ocr-local");
-  const [progress, setProgress] = useState<OcrProgress | null>(null);
-  const [result, setResult] = useState<OcrResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
+  const ocr = useOcrQueue();
+  const completedMarkdown = useMemo(() => ocr.queue?.items
+    .filter((item) => item.status === "completed" && item.markdown?.trim())
+    .map((item, index) => `## 第 ${index + 1} 页 · ${item.sourceName}\n\n${item.markdown}`)
+    .join("\n\n---\n\n") ?? "", [ocr.queue]);
 
-  async function start() {
-    if (!file) return;
-    setRunning(true);
-    setResult(null);
-    setError(null);
-    try {
-      const sourceDataUrl = await fileToDataUrl(file);
-      const next = engine === "tesseract"
-        ? await (await import("../features/ocr/tesseractEngine")).recognizeWithTesseract(file, { onProgress: setProgress })
-        : await runGlmOcr(providerId, sourceDataUrl, file.name);
-      if (engine === "tesseract" && isTauriRuntime()) {
-        try {
-          Object.assign(next, await persistLocalOcrArtifacts(sourceDataUrl, file.name, next));
-        } catch (caught) {
-          next.warnings.push(`识别成功，但本地附件保存失败：${caught instanceof Error ? caught.message : String(caught)}`);
-        }
-      }
-      setResult(next);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setRunning(false);
-    }
+  async function createQueue() {
+    if (!files.length) return;
+    const queue = await ocr.prepare(files, engine, providerId);
+    await ocr.start(queue);
   }
 
   function reviewResult() {
-    if (!file || !result) return;
-    const draft = createOcrImportDraft(result, file.name);
+    if (!ocr.queue || !completedMarkdown) return;
+    const result: OcrResult = {
+      engine: ocr.queue.engine === "glm" ? "glm_openai_compatible" : "tesseract_builtin",
+      markdown: completedMarkdown,
+      warnings: ocr.queue.items.some((item) => item.status !== "completed")
+        ? ["队列中仍有未完成页面；当前导入仅包含已完成内容。"]
+        : [],
+      elapsedMs: 0,
+      sourceAssetId: ocr.queue.items[0]?.sourceAssetId,
+    };
+    const sourceName = files.length === 1 ? files[0].name : `OCR 批次 ${ocr.queue.id.slice(0, 8)}`;
+    const draft = createOcrImportDraft(result, sourceName);
     saveImportDraft(draft);
     onReview(draft);
   }
@@ -66,8 +49,8 @@ export function OcrPage({ onReview }: OcrPageProps) {
     <div className="page-stack">
       <section className="panel">
         <div className="panel-heading">
-          <div><span className="eyebrow">Two-tier OCR</span><h2>题库图片识别</h2></div>
-          <span className="badge">预览功能</span>
+          <div><span className="eyebrow">Multi-page OCR</span><h2>题库扫描识别</h2></div>
+          <span className="badge">本地附件持久化</span>
         </div>
         <div className="ocr-grid">
           <div className="form-stack">
@@ -80,39 +63,46 @@ export function OcrPage({ onReview }: OcrPageProps) {
               <label className="field-label">Provider ID
                 <input value={providerId} onChange={(event) => setProviderId(event.target.value)} />
               </label>
-            ) : (
-              <p className="help-text">Tesseract.js 首次使用会按需加载中英文语言数据；适合普通印刷文字，不保证复杂公式和表格。</p>
-            )}
+            ) : <p className="help-text">适合普通印刷文字；复杂公式和表格建议使用视觉模型。</p>}
             <label className="drop-zone">
-              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-              <strong>{file ? file.name : "选择或拖入题目图片"}</strong>
-              <span>PNG、JPG、WebP</span>
+              <input
+                type="file"
+                multiple
+                accept="image/png,image/jpeg,image/webp,application/pdf"
+                onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+              />
+              <strong>{files.length ? `已选择 ${files.length} 个文件` : "选择图片或扫描 PDF"}</strong>
+              <span>PNG、JPG、WebP、PDF；PDF 将逐页加入队列</span>
             </label>
-            <button type="button" className="primary-button full-width" disabled={!file || running || (engine === "glm" && !isTauriRuntime())} onClick={() => void start()}>
-              {running ? "正在识别…" : "开始识别"}
+            {files.length ? <div className="selected-file-list">{files.map((file) => <small key={`${file.name}-${file.size}`}>{file.name}</small>)}</div> : null}
+            <button type="button" className="primary-button full-width" disabled={!files.length || ocr.preparing || ocr.running || !isTauriRuntime()} onClick={() => void createQueue()}>
+              {ocr.preparing ? "正在生成页面并保存附件…" : "建立队列并开始识别"}
             </button>
-            {progress && running ? (
-              <div role="progressbar" aria-label="OCR 识别进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress.progress * 100)}>
-                <div className="progress-track"><span style={{ width: `${Math.round(progress.progress * 100)}%` }} /></div><small>{progress.message}</small>
-              </div>
-            ) : null}
-            {engine === "glm" && !isTauriRuntime() ? <div className="alert warning">GLM-OCR 调用需要在 Tauri 桌面运行时中测试。</div> : null}
-            {error ? <div className="alert error" role="alert">{error}</div> : null}
+            {!isTauriRuntime() ? <div className="alert warning">多页 OCR 与附件恢复需要在 Tauri 桌面版中运行。</div> : null}
+            {ocr.error ? <div className="alert error" role="alert">{ocr.error}</div> : null}
           </div>
           <div className="ocr-preview">
-            {file ? <img src={URL.createObjectURL(file)} alt="待识别文档预览" /> : <div className="preview-placeholder">尚未选择图片</div>}
+            {completedMarkdown ? <MarkdownContent>{completedMarkdown}</MarkdownContent> : <div className="preview-placeholder">识别结果将在这里逐页汇总</div>}
           </div>
         </div>
       </section>
-      {result ? (
+      {ocr.queue ? (
+        <OcrQueuePanel
+          queue={ocr.queue}
+          running={ocr.running}
+          progress={ocr.progress}
+          onStart={() => void ocr.start()}
+          onPause={ocr.pause}
+          onCancel={() => void ocr.cancel()}
+          onRetry={ocr.retryCancelled}
+          onClear={ocr.remove}
+        />
+      ) : null}
+      {completedMarkdown ? (
         <section className="panel">
-          <div className="panel-heading"><div><span className="eyebrow">OCR Result</span><h3>识别结果</h3></div><span className="badge success">{result.elapsedMs} ms</span></div>
-          {result.warnings.map((warning) => <div key={warning} className="alert warning">{warning}</div>)}
-          <MarkdownContent>{result.markdown || "（未识别到文字）"}</MarkdownContent>
+          <div className="panel-heading"><div><span className="eyebrow">OCR Result</span><h3>已完成内容</h3></div></div>
           <div className="toolbar-actions">
-            <button type="button" className="primary-button" disabled={!result.markdown.trim()} onClick={reviewResult}>
-              校正并导入
-            </button>
+            <button type="button" className="primary-button" onClick={reviewResult}>校正并导入已完成内容</button>
           </div>
         </section>
       ) : null}

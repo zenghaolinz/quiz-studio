@@ -277,6 +277,14 @@ export async function deleteQuestion(id: string): Promise<void> {
 
 /** 恢复可移植题库。创建和批量写入任一步失败时清理新建题库。 */
 export async function restoreQuestionBank(portable: PortableBank): Promise<QuestionBank> {
+  if (isTauriRuntime()) {
+    return invokeCommand<QuestionBank>("restore_question_bank", {
+      input: {
+        bank: portable.bank,
+        questions: portable.questions,
+      },
+    });
+  }
   const bank = await createQuestionBank({
     name: portable.bank.name,
     subject: portable.bank.subject ?? undefined,

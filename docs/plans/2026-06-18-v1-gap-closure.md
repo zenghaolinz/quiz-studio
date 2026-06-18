@@ -12,6 +12,8 @@
 
 ### Task 1: 题库可移植格式与搜索
 
+**状态：已完成。** `.qbank` 恢复在桌面端以单一 SQLite 事务写入题库与全部题目，任一题目校验或写入失败会整体回滚。
+
 **Files:**
 - Create: `src/features/banks/portableBank.ts`
 - Create: `src/features/banks/portableBank.test.ts`
@@ -87,7 +89,7 @@
 
 ### Task 6: 附件、任务恢复与收尾
 
-**状态：进行中。** OCR 内容寻址附件仓库、可恢复导入草稿、AI 批次检查点续做和可访问性收尾已完成；OCR 在途请求恢复仍待后续批次。
+**状态：已完成。** OCR 内容寻址附件仓库、扫描 PDF/多图片持久化队列、重启恢复、运行中取消、可恢复导入草稿、AI 批次检查点续做和可访问性收尾均已完成。
 
 **Files:**
 - Modify: `src-tauri/src/db/schema.sql`

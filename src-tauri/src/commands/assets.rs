@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use tauri::State;
 
 use crate::{
@@ -80,4 +81,22 @@ pub fn read_text_asset(asset_id: String, state: State<'_, AppState>) -> Result<S
         .map_err(command_error)?;
     String::from_utf8(bytes)
         .map_err(|_| command_error(AppError::Runtime("附件不是有效的 UTF-8 文本".into())))
+}
+
+#[tauri::command]
+pub fn get_asset_data_url(asset_id: String, state: State<'_, AppState>) -> Result<String, String> {
+    let asset = state
+        .database
+        .get_asset(&asset_id)
+        .map_err(command_error)?
+        .ok_or_else(|| command_error(AppError::NotFound(format!("附件 {asset_id}"))))?;
+    let bytes = state
+        .assets
+        .read(&state.database, &asset_id)
+        .map_err(command_error)?;
+    Ok(format!(
+        "data:{};base64,{}",
+        asset.mime_type,
+        STANDARD.encode(bytes)
+    ))
 }

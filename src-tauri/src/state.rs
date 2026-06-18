@@ -3,6 +3,46 @@ use crate::{
     error::{AppError, AppResult},
     services::assets::AssetStore,
 };
+use std::{collections::HashMap, sync::Mutex};
+use tokio_util::sync::CancellationToken;
+
+#[derive(Default)]
+pub struct OcrTaskRegistry {
+    tasks: Mutex<HashMap<String, CancellationToken>>,
+}
+
+impl OcrTaskRegistry {
+    pub fn register(&self, task_id: String) -> AppResult<CancellationToken> {
+        let token = CancellationToken::new();
+        self.tasks
+            .lock()
+            .map_err(|_| AppError::PoisonedLock)?
+            .insert(task_id, token.clone());
+        Ok(token)
+    }
+
+    pub fn cancel(&self, task_id: &str) -> AppResult<bool> {
+        let token = self
+            .tasks
+            .lock()
+            .map_err(|_| AppError::PoisonedLock)?
+            .remove(task_id);
+        if let Some(token) = token {
+            token.cancel();
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    pub fn remove(&self, task_id: &str) -> AppResult<()> {
+        self.tasks
+            .lock()
+            .map_err(|_| AppError::PoisonedLock)?
+            .remove(task_id);
+        Ok(())
+    }
+}
 
 pub struct SecretStore {
     service: String,
@@ -48,6 +88,7 @@ pub struct AppState {
     pub secrets: SecretStore,
     pub http: reqwest::Client,
     pub assets: AssetStore,
+    pub ocr_tasks: OcrTaskRegistry,
 }
 
 impl AppState {
@@ -60,6 +101,7 @@ impl AppState {
             secrets: SecretStore::new("com.quizstudio.providers"),
             http,
             assets: AssetStore::new(app_data_dir),
+            ocr_tasks: OcrTaskRegistry::default(),
         })
     }
 }
@@ -67,6 +109,16 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ocr_task_registry_cancels_registered_task() {
+        let registry = OcrTaskRegistry::default();
+        let token = registry.register("page-1".into()).unwrap();
+
+        assert!(registry.cancel("page-1").unwrap());
+        assert!(token.is_cancelled());
+        assert!(!registry.cancel("page-1").unwrap());
+    }
 
     // Verifies the platform credential store (Windows Credential Manager on this
     // machine) actually round-trips a secret. This is the one piece of the secret

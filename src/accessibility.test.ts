@@ -13,8 +13,9 @@ describe("keyboard and assistive status contracts", () => {
 
   it("exposes OCR progress and errors to assistive technology", () => {
     const ocr = source("src/pages/OcrPage.tsx");
-    expect(ocr).toContain('role="progressbar"');
-    expect(ocr).toContain("aria-valuenow");
+    const queue = source("src/features/ocr/OcrQueuePanel.tsx");
+    expect(queue).toContain('role="progressbar"');
+    expect(queue).toContain("aria-valuenow");
     expect(ocr).toContain('role="alert"');
   });
 

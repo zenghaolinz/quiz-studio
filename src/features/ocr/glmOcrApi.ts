@@ -20,11 +20,17 @@ export async function runGlmOcr(
   imageDataUrl: string,
   sourceName = "scan-image",
   prompt = "请识别文档内容并输出结构清晰的 Markdown；数学公式使用 LaTeX，化学式尽量保持原始符号。",
+  taskId?: string,
 ): Promise<OcrResult> {
   return invokeCommand<OcrResult>("run_glm_ocr", {
     providerId,
     imageDataUrl,
     sourceName,
     prompt,
+    taskId,
   });
+}
+
+export async function cancelGlmOcr(taskId: string): Promise<boolean> {
+  return invokeCommand<boolean>("cancel_ocr_task", { taskId });
 }

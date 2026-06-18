@@ -30,6 +30,8 @@ roxmltree = "0.20"
 lopdf = "0.36"
 sha2 = "0.10"
 base64 = "0.22"
+tokio = { version = "1", features = ["sync", "macros"] }
+tokio-util = "0.7"
 
 # Platform credential-store backends. keyring 3.x gates native backends behind
 # non-default features; without them set() silently no-ops and get() returns

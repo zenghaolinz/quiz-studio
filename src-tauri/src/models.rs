@@ -168,6 +168,26 @@ pub struct OcrResult {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PortableQuestionInput {
+    #[serde(rename = "type")]
+    pub question_type: String,
+    pub stem_markdown: String,
+    pub options: serde_json::Value,
+    pub answer: serde_json::Value,
+    pub explanation_markdown: Option<String>,
+    pub max_score: Option<f64>,
+    pub tags: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreQuestionBankInput {
+    pub bank: CreateQuestionBankInput,
+    pub questions: Vec<PortableQuestionInput>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GenerateExplanationInput {
     pub provider_id: String,
     pub question_id: String,

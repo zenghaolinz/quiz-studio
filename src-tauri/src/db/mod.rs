@@ -9,13 +9,11 @@ use uuid::Uuid;
 
 use crate::{
     error::{AppError, AppResult},
-    models::{
-        CreateQuestionBankInput, CreateQuestionInput, Question, QuestionBank, TestAttempt,
-        TestSessionSnapshot,
-    },
+    models::{CreateQuestionInput, Question, TestAttempt, TestSessionSnapshot},
 };
 
 mod assets;
+mod banks;
 mod providers;
 
 const INIT_SQL: &str = include_str!("schema.sql");
@@ -114,81 +112,6 @@ impl Database {
 
     fn connection(&self) -> AppResult<std::sync::MutexGuard<'_, Connection>> {
         self.connection.lock().map_err(|_| AppError::PoisonedLock)
-    }
-
-    pub fn list_question_banks(&self) -> AppResult<Vec<QuestionBank>> {
-        let connection = self.connection()?;
-        let mut statement = connection.prepare(
-            "SELECT b.id, b.name, b.subject, b.description, COUNT(q.id), b.created_at, b.updated_at
-             FROM question_banks b
-             LEFT JOIN questions q ON q.bank_id = b.id
-             GROUP BY b.id
-             ORDER BY b.updated_at DESC",
-        )?;
-        let rows = statement.query_map([], |row| {
-            Ok(QuestionBank {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                subject: row.get(2)?,
-                description: row.get(3)?,
-                question_count: row.get(4)?,
-                created_at: row.get(5)?,
-                updated_at: row.get(6)?,
-            })
-        })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-    }
-
-    pub fn create_question_bank(&self, input: CreateQuestionBankInput) -> AppResult<QuestionBank> {
-        let name = input.name.trim();
-        if name.is_empty() {
-            return Err(AppError::InvalidConfig("题库名称不能为空".into()));
-        }
-        let id = Uuid::new_v4().to_string();
-        let now = Utc::now().to_rfc3339();
-        let connection = self.connection()?;
-        connection.execute(
-            "INSERT INTO question_banks (id, name, subject, description, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-            params![id, name, input.subject, input.description, now],
-        )?;
-        Ok(QuestionBank {
-            id,
-            name: name.to_string(),
-            subject: input.subject,
-            description: input.description,
-            question_count: 0,
-            created_at: now.clone(),
-            updated_at: now,
-        })
-    }
-
-    pub fn update_question_bank(
-        &self,
-        id: &str,
-        input: CreateQuestionBankInput,
-    ) -> AppResult<QuestionBank> {
-        let name = input.name.trim();
-        if name.is_empty() {
-            return Err(AppError::InvalidConfig("题库名称不能为空".into()));
-        }
-        let now = Utc::now().to_rfc3339();
-        {
-            let connection = self.connection()?;
-            let affected = connection.execute(
-                "UPDATE question_banks
-                 SET name = ?1, subject = ?2, description = ?3, updated_at = ?4
-                 WHERE id = ?5",
-                params![name, input.subject, input.description, now, id],
-            )?;
-            if affected == 0 {
-                return Err(AppError::NotFound(format!("题库 {} 不存在", id)));
-            }
-        }
-        self.list_question_banks()?
-            .into_iter()
-            .find(|bank| bank.id == id)
-            .ok_or_else(|| AppError::NotFound(format!("题库 {} 不存在", id)))
     }
 
     pub fn list_questions(&self, bank_id: &str) -> AppResult<Vec<Question>> {
@@ -488,8 +411,15 @@ fn insert_question_tx(
     input: &CreateQuestionInput,
     now: &str,
 ) -> AppResult<Question> {
+    let stem = input.stem_markdown.trim();
+    if stem.is_empty() {
+        return Err(AppError::InvalidConfig("题干不能为空".into()));
+    }
     let id = Uuid::new_v4().to_string();
     let max_score = input.max_score.unwrap_or(1.0);
+    if !max_score.is_finite() || max_score <= 0.0 {
+        return Err(AppError::InvalidConfig("分值必须大于 0".into()));
+    }
     let tags = input.tags.clone().unwrap_or_default();
     let options_json = serde_json::to_string(&input.options)?;
     let answer_json = serde_json::to_string(&input.answer)?;
@@ -503,7 +433,7 @@ fn insert_question_tx(
             id,
             input.bank_id,
             input.question_type,
-            input.stem_markdown,
+            stem,
             options_json,
             answer_json,
             input.explanation_markdown,
@@ -517,7 +447,7 @@ fn insert_question_tx(
         bank_id: input.bank_id.clone(),
         parent_id: None,
         question_type: input.question_type.clone(),
-        stem_markdown: input.stem_markdown.clone(),
+        stem_markdown: stem.to_string(),
         options: input.options.clone(),
         answer: input.answer.clone(),
         explanation_markdown: input.explanation_markdown.clone(),
@@ -557,6 +487,8 @@ fn map_question_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Question> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::CreateQuestionBankInput;
+    use serde_json::json;
     use std::env;
 
     fn temp_db() -> Database {
@@ -665,6 +597,44 @@ mod tests {
         assert!(result.is_err());
         // 回滚后库里无残留
         assert_eq!(db.list_questions(&bank.id).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn portable_restore_rolls_back_bank_and_questions_together() {
+        use crate::models::{PortableQuestionInput, RestoreQuestionBankInput};
+
+        let db = temp_db();
+        let before = db.list_question_banks().unwrap().len();
+        let result = db.restore_question_bank(RestoreQuestionBankInput {
+            bank: CreateQuestionBankInput {
+                name: "原子恢复测试".into(),
+                subject: None,
+                description: None,
+            },
+            questions: vec![
+                PortableQuestionInput {
+                    question_type: "true_false".into(),
+                    stem_markdown: "有效题目".into(),
+                    options: json!([]),
+                    answer: json!({"kind":"boolean","value":true}),
+                    explanation_markdown: None,
+                    max_score: Some(1.0),
+                    tags: Some(vec![]),
+                },
+                PortableQuestionInput {
+                    question_type: "true_false".into(),
+                    stem_markdown: " ".into(),
+                    options: json!([]),
+                    answer: json!({"kind":"boolean","value":true}),
+                    explanation_markdown: None,
+                    max_score: Some(1.0),
+                    tags: Some(vec![]),
+                },
+            ],
+        });
+
+        assert!(result.is_err());
+        assert_eq!(db.list_question_banks().unwrap().len(), before);
     }
 
     #[test]

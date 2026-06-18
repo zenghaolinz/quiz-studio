@@ -2,7 +2,7 @@ use tauri::State;
 
 use crate::{
     error::command_error,
-    models::{CreateQuestionBankInput, QuestionBank},
+    models::{CreateQuestionBankInput, QuestionBank, RestoreQuestionBankInput},
     state::AppState,
 };
 
@@ -32,6 +32,19 @@ pub fn update_question_bank(
         .database
         .update_question_bank(&id, input)
         .map_err(command_error)
+}
+
+#[tauri::command]
+pub async fn restore_question_bank(
+    input: RestoreQuestionBankInput,
+    state: State<'_, AppState>,
+) -> Result<QuestionBank, String> {
+    let db = state.database.clone_ref();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.restore_question_bank(input).map_err(command_error)
+    })
+    .await
+    .map_err(|error| command_error(crate::error::AppError::Runtime(error.to_string())))?
 }
 
 /// 删除题库，其下题目通过外键 ON DELETE CASCADE 自动清理。
