@@ -64,7 +64,12 @@ export function AiGradingPanel({ question, response, providers, grade, onGrade }
       <label className="field-label">确认分数（可调整）<input type="number" min={0} max={draft.maxScore} step="0.5" value={score} onChange={(event) => setScore(Number(event.target.value))} /></label>
       {grade ? <div className="alert success">AI 建议分已自动计入总分。</div> : null}
       <div className="button-row"><button type="button" className="secondary-button" disabled={busy || score === grade?.score} onClick={() => void saveAdjustment()}>{busy ? "保存中…" : "保存分数调整"}</button><button type="button" className="text-button" disabled={busy} onClick={() => void generate()}>重新评分</button></div>
-      <small>{draft.model} · {draft.elapsedMs} ms</small>
+      <small>
+        {providers.find((provider) => provider.id === draft.providerId)?.name ?? draft.providerId} · {draft.model} · {draft.elapsedMs} ms
+        {draft.estimatedInputTokens && draft.estimatedOutputTokens
+          ? ` · 估算 ${draft.estimatedInputTokens + draft.estimatedOutputTokens} tokens（输入 ${draft.estimatedInputTokens} / 输出 ${draft.estimatedOutputTokens}）`
+          : ""}
+      </small>
     </>}
     {providers.length === 0 ? <div className="alert warning">请先在设置中添加并启用语言模型 Provider。</div> : null}
     {error ? <div className="alert error">{error}</div> : null}

@@ -27,6 +27,8 @@
 
 ### Task 2: 完整题目编辑与题库元数据编辑
 
+**状态：已完成。** 题库与完整题目编辑已接入桌面/浏览器仓库；SQLite 迁移版本 4 使用触发器维护 FTS5 索引并回填旧数据。
+
 **Files:**
 - Modify: `src/domain/question.ts`
 - Modify: `src-tauri/src/models.rs`
@@ -43,6 +45,8 @@
 4. 验证所有题型答案在编辑后可重新读取和评分。
 
 ### Task 3: 自测会话与结果分析
+
+**状态：已完成。** 自测会话、逐题作答、统一提交、总分/小题分、错题筛选与未完成恢复均已形成持久化闭环。
 
 **Files:**
 - Create: `src/domain/session.ts`
@@ -61,6 +65,8 @@
 
 ### Task 4: DOCX 与 PDF 导入
 
+**状态：已完成。** DOCX、文本 PDF 与扫描 PDF 分流均进入统一导入管线；中文、页码、公式文本与损坏文件均有回归覆盖。
+
 **Files:**
 - Create: `src-tauri/src/services/document_import.rs`
 - Create: `src-tauri/src/commands/document_import.rs`
@@ -74,7 +80,7 @@
 
 ### Task 5: AI 主观题评分
 
-**状态：已完成。** 自动采用合法 AI 分数，保留可选人工调分，并持久化评分明细。
+**状态：已完成。** 自动采用合法 AI 分数，保留可选人工调分，持久化评分明细，并展示 Provider、模型、耗时和明确标注的 token 估算。
 
 **Files:**
 - Modify: `src-tauri/src/services/ai.rs`

@@ -14,6 +14,7 @@ use crate::{
 
 mod assets;
 mod banks;
+mod migrations;
 mod providers;
 
 const INIT_SQL: &str = include_str!("schema.sql");
@@ -106,6 +107,9 @@ impl Database {
                 "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (3, ?1)",
                 params![Utc::now().to_rfc3339()],
             )?;
+        }
+        if current.unwrap_or(0) < 4 {
+            migrations::migrate_fts_v4(connection)?;
         }
         Ok(())
     }
@@ -743,6 +747,44 @@ mod tests {
     }
 
     #[test]
+    fn question_updates_keep_full_text_index_in_sync() {
+        let db = temp_db();
+        let bank = db
+            .create_question_bank(CreateQuestionBankInput {
+                name: "search".into(),
+                subject: None,
+                description: None,
+            })
+            .unwrap();
+        let question = db
+            .create_question(sample_question_input(&bank.id, "旧关键词"))
+            .unwrap();
+        db.update_question(
+            &question.id,
+            sample_question_input(&bank.id, "量子新关键词"),
+        )
+        .unwrap();
+
+        let connection = db.connection().unwrap();
+        let new_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM questions_fts WHERE questions_fts MATCH '量子新关键词'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let old_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM questions_fts WHERE questions_fts MATCH '旧关键词'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(new_count, 1);
+        assert_eq!(old_count, 0);
+    }
+
+    #[test]
     fn migrate_records_latest_version() {
         let db = temp_db();
         let v: i64 = db
@@ -752,7 +794,7 @@ mod tests {
                 r.get::<_, i64>(0)
             })
             .unwrap();
-        assert_eq!(v, 3);
+        assert_eq!(v, 4);
         let asset_columns = db
             .connection()
             .unwrap()

@@ -1,5 +1,7 @@
 # GLM-OCR 服务接入
 
+> 2026-06-19 更新：本文仍描述外部服务接入方式。默认本地能力已提出“直接内置 llama.cpp sidecar、从 Hugging Face/魔搭按需下载 GGUF”的新方案，见 [`plans/2026-06-19-glm-ocr-sidecar-design.md`](plans/2026-06-19-glm-ocr-sidecar-design.md) 与 ADR-0002。外部 SDK Server 继续作为远程/高级部署选项。
+
 ## 推荐架构
 
 Quiz Studio 不直接内嵌 Python、vLLM、SGLang 或模型权重。主程序只连接一个独立 OCR 服务。这样可以：
@@ -43,7 +45,7 @@ http://127.0.0.1:5002/glmocr/parse
 
 正式版本应增加可选组件管理器：
 
-1. 检测 Python、Docker、Ollama 或远程服务；
+1. 检测内置 llama.cpp sidecar，并兼容 Python、Docker、Ollama 或远程服务；
 2. 下载模型与校验 SHA-256；
 3. 写入独立组件目录；
 4. 启动/停止 sidecar；

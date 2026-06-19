@@ -35,11 +35,29 @@ CREATE INDEX IF NOT EXISTS idx_questions_bank_id ON questions(bank_id);
 CREATE INDEX IF NOT EXISTS idx_questions_type ON questions(type);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS questions_fts USING fts5(
-    question_id UNINDEXED,
+    id UNINDEXED,
     stem_markdown,
     explanation_markdown,
-    content=''
+    content='questions',
+    content_rowid='rowid'
 );
+
+CREATE TRIGGER IF NOT EXISTS questions_fts_insert AFTER INSERT ON questions BEGIN
+    INSERT INTO questions_fts(rowid, id, stem_markdown, explanation_markdown)
+    VALUES (new.rowid, new.id, new.stem_markdown, new.explanation_markdown);
+END;
+
+CREATE TRIGGER IF NOT EXISTS questions_fts_delete AFTER DELETE ON questions BEGIN
+    INSERT INTO questions_fts(questions_fts, rowid, id, stem_markdown, explanation_markdown)
+    VALUES ('delete', old.rowid, old.id, old.stem_markdown, old.explanation_markdown);
+END;
+
+CREATE TRIGGER IF NOT EXISTS questions_fts_update AFTER UPDATE ON questions BEGIN
+    INSERT INTO questions_fts(questions_fts, rowid, id, stem_markdown, explanation_markdown)
+    VALUES ('delete', old.rowid, old.id, old.stem_markdown, old.explanation_markdown);
+    INSERT INTO questions_fts(rowid, id, stem_markdown, explanation_markdown)
+    VALUES (new.rowid, new.id, new.stem_markdown, new.explanation_markdown);
+END;
 
 CREATE TABLE IF NOT EXISTS provider_configs (
     id TEXT PRIMARY KEY,

@@ -17,6 +17,8 @@ export interface AiGradingDraft {
   providerId: string;
   model: string;
   elapsedMs: number;
+  estimatedInputTokens?: number;
+  estimatedOutputTokens?: number;
 }
 
 export interface SubjectiveGrade extends AiGradingDraft {

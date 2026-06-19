@@ -234,12 +234,14 @@ Authorization: Bearer <optional>
 
 ### 6.5 后续组件管理器
 
+2026-06-19 已形成 Proposed 方案：基础安装包直接内置受管 llama.cpp sidecar，GLM-OCR GGUF 与视觉 mmproj 由用户在应用内从 Hugging Face 或魔搭下载、断点续传并校验后安装；首版整页推理，PP-DocLayout 作为后续可选增强组件。详见 `docs/plans/2026-06-19-glm-ocr-sidecar-design.md` 和 ADR-0002。
+
 模型管理器作为独立里程碑开发：
 
 - 检测 GPU、显存、系统和可用推理框架；
 - 下载模型与依赖；
 - 校验 SHA-256；
-- 管理 vLLM/SGLang/Ollama/SDK Server；
+- 默认管理内置 llama.cpp sidecar，并保留 vLLM/SGLang/Ollama/SDK Server 外部接入；
 - 健康检查；
 - 端口冲突处理；
 - 服务崩溃恢复；

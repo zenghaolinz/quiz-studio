@@ -240,6 +240,8 @@ pub struct AiGradingDraft {
     pub provider_id: String,
     pub model: String,
     pub elapsed_ms: u128,
+    pub estimated_input_tokens: usize,
+    pub estimated_output_tokens: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]

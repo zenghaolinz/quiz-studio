@@ -114,6 +114,7 @@ mod tests {
         let bytes = include_bytes!("../../tests/fixtures/question-bank.docx");
         let result = extract_document(bytes, DocumentKind::Docx).unwrap();
         assert!(result.text.contains("水的化学式"));
+        assert!(result.text.contains("H2O"));
         assert!(result.text.contains("答案：B"));
         assert!(!result.needs_ocr);
     }
@@ -123,6 +124,7 @@ mod tests {
         let bytes = include_bytes!("../../tests/fixtures/question-bank.pdf");
         let result = extract_document(bytes, DocumentKind::Pdf).unwrap();
         assert!(result.text.contains("水的化学式"));
+        assert!(result.text.contains("H2O"));
         assert_eq!(result.pages.len(), 1);
         assert_eq!(result.pages[0].page, 1);
         assert!(!result.needs_ocr);

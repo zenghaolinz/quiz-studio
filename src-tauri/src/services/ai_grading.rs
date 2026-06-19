@@ -28,14 +28,10 @@ pub async fn generate_grade(
     validate_llm_provider(provider)?;
     validate_request(question, response)?;
     let prompt = build_prompt(question, response)?;
+    let system_prompt =
+        "你是严谨的主观题评分助手。只能依据题目、参考答案和评分细则评分，并输出有效 JSON。";
     let started_at = Instant::now();
-    let content = call_text_model(
-        state,
-        provider,
-        "你是严谨的主观题评分助手。只能依据题目、参考答案和评分细则评分，并输出有效 JSON。",
-        &prompt,
-    )
-    .await?;
+    let content = call_text_model(state, provider, system_prompt, &prompt).await?;
     let grade = parse_grade(&content, question.max_score)?;
     Ok(AiGradingDraft {
         question_id: question.id.clone(),
@@ -46,7 +42,13 @@ pub async fn generate_grade(
         provider_id: provider.id.clone(),
         model: provider.model.clone(),
         elapsed_ms: started_at.elapsed().as_millis(),
+        estimated_input_tokens: estimate_tokens(&format!("{system_prompt}\n{prompt}")),
+        estimated_output_tokens: estimate_tokens(&content),
     })
+}
+
+fn estimate_tokens(text: &str) -> usize {
+    text.chars().count().div_ceil(3).max(1)
 }
 
 fn validate_request(question: &Question, response: &str) -> AppResult<()> {
@@ -172,5 +174,11 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("评分点得分"));
+    }
+
+    #[test]
+    fn estimates_usage_without_claiming_exact_provider_tokens() {
+        assert_eq!(estimate_tokens("123456"), 2);
+        assert_eq!(estimate_tokens(""), 1);
     }
 }
