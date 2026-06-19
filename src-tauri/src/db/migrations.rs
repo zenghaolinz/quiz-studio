@@ -39,3 +39,39 @@ pub(super) fn migrate_fts_v4(connection: &Connection) -> AppResult<()> {
     )?;
     Ok(())
 }
+
+pub(super) fn migrate_model_state_v5(connection: &Connection) -> AppResult<()> {
+    connection.execute_batch(
+        "CREATE TABLE IF NOT EXISTS model_installations (
+            model_id TEXT PRIMARY KEY,
+            revision TEXT NOT NULL,
+            source TEXT NOT NULL,
+            status TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            installed_at TEXT,
+            verified_at TEXT,
+            error_message TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS model_download_files (
+            model_id TEXT NOT NULL REFERENCES model_installations(model_id) ON DELETE CASCADE,
+            path TEXT NOT NULL,
+            downloaded_bytes INTEGER NOT NULL DEFAULT 0,
+            total_bytes INTEGER NOT NULL,
+            etag TEXT,
+            status TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (model_id, path)
+         );
+         CREATE INDEX IF NOT EXISTS idx_model_installations_status
+            ON model_installations(status);
+         CREATE INDEX IF NOT EXISTS idx_model_download_files_status
+            ON model_download_files(status);",
+    )?;
+    connection.execute(
+        "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (5, ?1)",
+        params![Utc::now().to_rfc3339()],
+    )?;
+    Ok(())
+}

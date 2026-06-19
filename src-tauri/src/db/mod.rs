@@ -15,6 +15,8 @@ use crate::{
 mod assets;
 mod banks;
 mod migrations;
+#[allow(dead_code)] // Wired to Tauri commands when the model manager lands.
+mod model_installations;
 mod providers;
 
 const INIT_SQL: &str = include_str!("schema.sql");
@@ -41,9 +43,11 @@ impl Database {
         connection.pragma_update(None, "journal_mode", "WAL")?;
         connection.execute_batch(INIT_SQL)?;
         Self::migrate(&connection)?;
-        Ok(Self {
+        let database = Self {
             connection: Arc::new(Mutex::new(connection)),
-        })
+        };
+        database.normalize_interrupted_model_jobs()?;
+        Ok(database)
     }
 
     /// 受控迁移：读 schema_version，按需应用尚未执行的迁移。
@@ -110,6 +114,9 @@ impl Database {
         }
         if current.unwrap_or(0) < 4 {
             migrations::migrate_fts_v4(connection)?;
+        }
+        if current.unwrap_or(0) < 5 {
+            migrations::migrate_model_state_v5(connection)?;
         }
         Ok(())
     }
@@ -794,7 +801,7 @@ mod tests {
                 r.get::<_, i64>(0)
             })
             .unwrap();
-        assert_eq!(v, 4);
+        assert_eq!(v, 5);
         let asset_columns = db
             .connection()
             .unwrap()

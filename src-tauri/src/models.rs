@@ -2,6 +2,61 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)] // Exposed by the model-manager command layer in a later task.
+pub struct ModelInstallation {
+    pub model_id: String,
+    pub revision: String,
+    pub source: String,
+    pub status: String,
+    pub size_bytes: i64,
+    pub installed_at: Option<String>,
+    pub verified_at: Option<String>,
+    pub error_message: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct ModelInstallationInput {
+    pub model_id: String,
+    pub revision: String,
+    pub source: String,
+    pub status: String,
+    pub size_bytes: i64,
+    pub installed_at: Option<String>,
+    pub verified_at: Option<String>,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct ModelDownloadFile {
+    pub model_id: String,
+    pub path: String,
+    pub downloaded_bytes: i64,
+    pub total_bytes: i64,
+    pub etag: Option<String>,
+    pub status: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct ModelDownloadFileInput {
+    pub model_id: String,
+    pub path: String,
+    pub downloaded_bytes: i64,
+    pub total_bytes: i64,
+    pub etag: Option<String>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Asset {
     pub id: String,
     pub sha256: String,
