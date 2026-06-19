@@ -5,6 +5,15 @@ mod models;
 mod services;
 mod state;
 
+#[doc(hidden)]
+pub mod local_ocr_compat {
+    pub use crate::services::local_inference::{
+        backend::{InstalledModel, LocalInferenceBackend, LocalOcrRequest, RuntimeStatus},
+        llama_server::{LlamaServerBackend, ServerOptions},
+        process::SystemProcessSpawner,
+    };
+}
+
 use std::sync::Arc;
 
 use tauri::Manager;

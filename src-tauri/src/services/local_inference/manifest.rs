@@ -163,8 +163,8 @@ mod tests {
         "id": "glm-ocr-q8",
         "runtime": { "kind": "llama.cpp", "release": "b9716" },
         "files": [
-          { "role": "model", "path": "GLM-OCR-Q8_0.gguf", "size": 950433408, "sha256": "f5899ad12b29350282240cf48c28e48aec8eeacbeacd5134a3e7d6c7ffa6819f" },
-          { "role": "mmproj", "path": "mmproj-GLM-OCR-Q8_0.gguf", "size": 484403648, "sha256": "e14281d28129fbfafcfcdffd2f1d2d73bdcb5c2d74105d32f45fc3cd1c69e5a5" }
+          { "role": "model", "path": "GLM-OCR-Q8_0.gguf", "size": 950433408, "sha256": "45bc244a6446aff850521dc41f18bc8d7105ad5f0c2c8c28af04e7cc4f4d50b1" },
+          { "role": "mmproj", "path": "mmproj-GLM-OCR-Q8_0.gguf", "size": 484403648, "sha256": "9c4b58e33e316ed142eb5dcb41abec3844d3e6e5dc361ffb782c3fa9d175141f" }
         ],
         "sources": [{ "kind": "huggingFace", "repository": "ggml-org/GLM-OCR-GGUF", "revision": "65a42de1148dbed2297e922b5dbc7d9b70c36578" }]
       }]
@@ -178,6 +178,14 @@ mod tests {
         assert_eq!(model.runtime.release, "b9716");
         assert_eq!(model.file(ModelFileRole::Model).unwrap().size, 950_433_408);
         assert_eq!(model.file(ModelFileRole::Mmproj).unwrap().size, 484_403_648);
+        assert_eq!(
+            model.file(ModelFileRole::Model).unwrap().sha256,
+            "45bc244a6446aff850521dc41f18bc8d7105ad5f0c2c8c28af04e7cc4f4d50b1"
+        );
+        assert_eq!(
+            model.file(ModelFileRole::Mmproj).unwrap().sha256,
+            "9c4b58e33e316ed142eb5dcb41abec3844d3e6e5dc361ffb782c3fa9d175141f"
+        );
     }
 
     #[test]
@@ -186,7 +194,7 @@ mod tests {
         assert!(ModelCatalog::parse(&traversal).is_err());
 
         let invalid_hash = VALID.replace(
-            "f5899ad12b29350282240cf48c28e48aec8eeacbeacd5134a3e7d6c7ffa6819f",
+            "45bc244a6446aff850521dc41f18bc8d7105ad5f0c2c8c28af04e7cc4f4d50b1",
             "not-a-hash",
         );
         assert!(ModelCatalog::parse(&invalid_hash).is_err());

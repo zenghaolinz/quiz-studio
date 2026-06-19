@@ -629,6 +629,7 @@ mod tests {
         let plan = manager.plan_install("glm-ocr-q8", "huggingFace").unwrap();
         assert_eq!(plan.required_bytes, 1_434_837_056);
         assert!(plan.available_bytes > 0);
+        assert!(manager.plan_install("glm-ocr-q8", "modelScope").is_ok());
         assert!(manager.plan_install("glm-ocr-q8", "arbitraryUrl").is_err());
     }
 
