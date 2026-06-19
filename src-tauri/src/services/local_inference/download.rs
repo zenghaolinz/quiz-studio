@@ -174,7 +174,7 @@ fn validate_request(request: &DownloadRequest) -> AppResult<()> {
     Ok(())
 }
 
-fn verify_file(path: &Path, expected_size: u64, expected_sha256: &str) -> AppResult<()> {
+pub(super) fn verify_file(path: &Path, expected_size: u64, expected_sha256: &str) -> AppResult<()> {
     if fs::metadata(path)?.len() != expected_size {
         remove_if_exists(path)?;
         return Err(AppError::Runtime("模型文件大小校验失败".into()));

@@ -4,6 +4,7 @@ pub mod banks;
 pub mod document_import;
 pub mod files;
 pub mod health;
+pub mod models;
 pub mod ocr;
 pub mod providers;
 pub mod questions;

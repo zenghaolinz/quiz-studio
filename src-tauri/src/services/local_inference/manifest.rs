@@ -15,7 +15,7 @@ pub struct ModelCatalog {
     pub models: Vec<ModelManifest>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ModelManifest {
     pub id: String,
     pub runtime: RuntimeRequirement,
@@ -23,7 +23,7 @@ pub struct ModelManifest {
     pub sources: Vec<ModelSource>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct RuntimeRequirement {
     pub kind: String,
     pub release: String,
@@ -37,7 +37,7 @@ pub enum ModelFileRole {
     Extra,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ModelFile {
     pub role: ModelFileRole,
     pub path: String,
@@ -45,14 +45,14 @@ pub struct ModelFile {
     pub sha256: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum ModelSourceKind {
     HuggingFace,
     ModelScope,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ModelSource {
     pub kind: ModelSourceKind,
     pub repository: String,
@@ -85,6 +85,15 @@ impl ModelCatalog {
             model.validate()?;
         }
         Ok(())
+    }
+}
+
+impl ModelSourceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::HuggingFace => "huggingFace",
+            Self::ModelScope => "modelScope",
+        }
     }
 }
 

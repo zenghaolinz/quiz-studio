@@ -92,6 +92,7 @@ pub struct AppState {
     pub http: reqwest::Client,
     pub assets: AssetStore,
     pub ocr_tasks: OcrTaskRegistry,
+    pub model_manager: Arc<local_inference::manager::ModelManager>,
     #[allow(dead_code)] // Read by the local OCR command layer in Task 8.
     pub local_inference: Option<Arc<dyn local_inference::backend::LocalInferenceBackend>>,
 }
@@ -99,6 +100,10 @@ pub struct AppState {
 impl AppState {
     pub fn new(database: Database, app_data_dir: std::path::PathBuf) -> AppResult<Self> {
         local_inference::bundled_catalog()?;
+        let model_manager = Arc::new(local_inference::manager::ModelManager::new(
+            database.clone(),
+            app_data_dir.clone(),
+        )?);
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(180))
             .build()?;
@@ -108,6 +113,7 @@ impl AppState {
             http,
             assets: AssetStore::new(app_data_dir),
             ocr_tasks: OcrTaskRegistry::default(),
+            model_manager,
             local_inference: None,
         })
     }

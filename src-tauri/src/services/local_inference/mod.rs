@@ -4,6 +4,7 @@ pub mod backend;
 pub mod download;
 #[allow(dead_code)]
 pub mod llama_server;
+pub mod manager;
 pub mod manifest;
 #[allow(dead_code)]
 pub mod process;
