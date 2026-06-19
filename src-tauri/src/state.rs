@@ -1,7 +1,7 @@
 use crate::{
     db::Database,
     error::{AppError, AppResult},
-    services::assets::AssetStore,
+    services::{assets::AssetStore, local_inference},
 };
 use std::{collections::HashMap, sync::Mutex};
 use tokio_util::sync::CancellationToken;
@@ -93,6 +93,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(database: Database, app_data_dir: std::path::PathBuf) -> AppResult<Self> {
+        local_inference::bundled_catalog()?;
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(180))
             .build()?;
