@@ -1,6 +1,12 @@
+#[allow(dead_code)] // Activated when the packaged runtime is wired in Task 5.
+pub mod backend;
 #[allow(dead_code)] // Consumed by the model manager in Task 6.
 pub mod download;
+#[allow(dead_code)]
+pub mod llama_server;
 pub mod manifest;
+#[allow(dead_code)]
+pub mod process;
 #[allow(dead_code)]
 pub mod sources;
 

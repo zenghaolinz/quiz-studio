@@ -46,6 +46,9 @@ pub async fn download(
     cancellation: CancellationToken,
 ) -> AppResult<DownloadOutcome> {
     validate_request(&request)?;
+    if cancellation.is_cancelled() {
+        return Err(AppError::Runtime("模型下载已取消".into()));
+    }
     let parent = request
         .destination
         .parent()
@@ -114,6 +117,7 @@ pub async fn download(
     let mut last_progress_at = Instant::now();
     loop {
         let chunk = tokio::select! {
+            biased;
             _ = cancellation.cancelled() => {
                 output.flush()?;
                 return Err(AppError::Runtime("模型下载已取消".into()));
@@ -492,7 +496,6 @@ mod tests {
     #[test]
     fn cancellation_never_exposes_an_unverified_final_file() {
         let body = b"0123456789";
-        let server = fixture(body, false, "v1", 1);
         let directory =
             std::env::temp_dir().join(format!("quiz-download-{}", uuid::Uuid::new_v4()));
         let destination = directory.join("model.gguf");
@@ -501,13 +504,16 @@ mod tests {
 
         assert!(runtime()
             .block_on(download(
-                request(server.url, destination.clone(), body),
+                request(
+                    "http://127.0.0.1:1/model.gguf".parse().unwrap(),
+                    destination.clone(),
+                    body,
+                ),
                 cancellation,
             ))
             .is_err());
         assert!(!destination.exists());
-        assert!(directory.join("model.gguf.part").exists());
-        server.thread.join().unwrap();
+        assert!(!directory.join("model.gguf.part").exists());
         let _ = fs::remove_dir_all(directory);
     }
     use sha2::{Digest, Sha256};

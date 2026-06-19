@@ -3,7 +3,10 @@ use crate::{
     error::{AppError, AppResult},
     services::{assets::AssetStore, local_inference},
 };
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 use tokio_util::sync::CancellationToken;
 
 #[derive(Default)]
@@ -89,6 +92,8 @@ pub struct AppState {
     pub http: reqwest::Client,
     pub assets: AssetStore,
     pub ocr_tasks: OcrTaskRegistry,
+    #[allow(dead_code)] // Read by the local OCR command layer in Task 8.
+    pub local_inference: Option<Arc<dyn local_inference::backend::LocalInferenceBackend>>,
 }
 
 impl AppState {
@@ -103,6 +108,7 @@ impl AppState {
             http,
             assets: AssetStore::new(app_data_dir),
             ocr_tasks: OcrTaskRegistry::default(),
+            local_inference: None,
         })
     }
 }
