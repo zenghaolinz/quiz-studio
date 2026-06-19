@@ -1,4 +1,8 @@
+#[allow(dead_code)] // Consumed by the model manager in Task 6.
+pub mod download;
 pub mod manifest;
+#[allow(dead_code)]
+pub mod sources;
 
 pub use manifest::ModelCatalog;
 
