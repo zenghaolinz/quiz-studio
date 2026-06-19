@@ -3,6 +3,7 @@ import type { ProviderConfig, UpsertProviderInput } from "../domain/ocr";
 import { testAiProvider } from "../features/ai/api";
 import { AI_PROVIDER_PRESETS } from "../features/ai/providerPresets";
 import { deleteProvider, listProviders, upsertProvider } from "../features/ocr/glmOcrApi";
+import { LocalModelPanel } from "../features/models/components/LocalModelPanel";
 import { isTauriRuntime } from "../lib/tauri";
 
 interface LlmDraft {
@@ -135,6 +136,7 @@ export function SettingsPage({ onProvidersChanged }: SettingsPageProps) {
 
   return (
     <div className="page-stack">
+      <LocalModelPanel desktop={desktop} />
       <section className="panel">
         <div className="panel-heading"><div><span className="eyebrow">AI Provider</span><h2>大模型 API 配置</h2></div><span className="badge">用于生成题目解析</span></div>
         <div className="settings-provider-layout">
