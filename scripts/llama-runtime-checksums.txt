@@ -1,0 +1,7 @@
+# llama.cpp b9716 official GitHub Release digests, captured 2026-06-19.
+e037cdcf34e9f7a38548e65be5a5c3d1ea96ef7ac951485c4f0b25e9e93ab7f4  llama-b9716-bin-win-cpu-x64.zip
+a5cbf38d49f2f02bab9a341a851a084984a759880e327e58c5be8288e3f62148  llama-b9716-bin-win-cpu-arm64.zip
+17b73b07908ca8b3e3b5b6f11b889701985f19bc7e425cc2ca9eefc280ebc39e  llama-b9716-bin-macos-arm64.tar.gz
+680f94adff527fa44934947eac0df999363f74d1241ee864a14a84a9ef925dfe  llama-b9716-bin-macos-x64.tar.gz
+77e9b191c09479001e4d93514e87bd3e849c413eaa2f2b241fd11d202159cd81  llama-b9716-bin-ubuntu-x64.tar.gz
+3023c64da2542195cfecdf24f49127582128715b8ac58c6a6a4185b7ab83d078  llama-b9716-bin-ubuntu-arm64.tar.gz
