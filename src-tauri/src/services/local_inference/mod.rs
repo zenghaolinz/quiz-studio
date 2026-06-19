@@ -8,6 +8,8 @@ pub mod manager;
 pub mod manifest;
 #[allow(dead_code)]
 pub mod process;
+pub mod runtime;
+pub mod session;
 #[allow(dead_code)]
 pub mod sources;
 

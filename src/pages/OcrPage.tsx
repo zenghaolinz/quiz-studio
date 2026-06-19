@@ -14,7 +14,7 @@ interface OcrPageProps {
 
 export function OcrPage({ onReview }: OcrPageProps) {
   const [files, setFiles] = useState<File[]>([]);
-  const [engine, setEngine] = useState<"tesseract" | "glm">("tesseract");
+  const [engine, setEngine] = useState<"tesseract" | "glm" | "local_glm">("tesseract");
   const [providerId, setProviderId] = useState("glm-ocr-local");
   const ocr = useOcrQueue();
   const completedMarkdown = useMemo(() => ocr.queue?.items
@@ -24,14 +24,16 @@ export function OcrPage({ onReview }: OcrPageProps) {
 
   async function createQueue() {
     if (!files.length) return;
-    const queue = await ocr.prepare(files, engine, providerId);
+    const queue = await ocr.prepare(files, engine, engine === "local_glm" ? "glm-ocr-q8" : providerId);
     await ocr.start(queue);
   }
 
   function reviewResult() {
     if (!ocr.queue || !completedMarkdown) return;
     const result: OcrResult = {
-      engine: ocr.queue.engine === "glm" ? "glm_openai_compatible" : "tesseract_builtin",
+      engine: ocr.queue.engine === "glm"
+        ? "glm_openai_compatible"
+        : ocr.queue.engine === "local_glm" ? "local_glm_llama_cpp" : "tesseract_builtin",
       markdown: completedMarkdown,
       warnings: ocr.queue.items.some((item) => item.status !== "completed")
         ? ["队列中仍有未完成页面；当前导入仅包含已完成内容。"]
@@ -57,12 +59,15 @@ export function OcrPage({ onReview }: OcrPageProps) {
             <label className="field-label">识别引擎</label>
             <div className="segmented-control">
               <button type="button" className={engine === "tesseract" ? "active" : ""} onClick={() => setEngine("tesseract")}>基础 OCR</button>
-              <button type="button" className={engine === "glm" ? "active" : ""} onClick={() => setEngine("glm")}>GLM-OCR</button>
+              <button type="button" className={engine === "local_glm" ? "active" : ""} onClick={() => setEngine("local_glm")}>本地 GLM</button>
+              <button type="button" className={engine === "glm" ? "active" : ""} onClick={() => setEngine("glm")}>远程 GLM</button>
             </div>
             {engine === "glm" ? (
               <label className="field-label">Provider ID
                 <input value={providerId} onChange={(event) => setProviderId(event.target.value)} />
               </label>
+            ) : engine === "local_glm" ? (
+              <p className="help-text">使用已下载的 GLM-OCR Q8；开始队列时会自动启动 llama.cpp，空闲后自动退出。</p>
             ) : <p className="help-text">适合普通印刷文字；复杂公式和表格建议使用视觉模型。</p>}
             <label className="drop-zone">
               <input

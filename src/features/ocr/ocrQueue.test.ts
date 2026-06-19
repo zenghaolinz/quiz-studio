@@ -16,6 +16,18 @@ function memoryStorage(): OcrQueueStorage {
 }
 
 describe("OCR queue checkpoint", () => {
+  it("persists the built-in local GLM engine and its model id", () => {
+    const storage = memoryStorage();
+    const queue = createOcrQueue("local_glm", "glm-ocr-q8", [
+      { sourceAssetId: "asset-1", sourceName: "scan.png" },
+    ], storage);
+
+    expect(loadOcrQueue(storage)).toMatchObject({
+      engine: "local_glm",
+      providerId: "glm-ocr-q8",
+    });
+  });
+
   it("restores running work as pending after restart", () => {
     const storage = memoryStorage();
     const queue = createOcrQueue("glm", "provider-a", [

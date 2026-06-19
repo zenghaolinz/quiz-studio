@@ -9,6 +9,12 @@ const statusLabels = {
   cancelled: "已取消",
 };
 
+const engineLabels = {
+  tesseract: "基础 OCR",
+  glm: "远程 GLM",
+  local_glm: "本地 GLM · llama.cpp",
+};
+
 interface OcrQueuePanelProps {
   queue: OcrQueue;
   running: boolean;
@@ -28,7 +34,7 @@ export function OcrQueuePanel(props: OcrQueuePanelProps) {
     <section className="panel ocr-queue-panel">
       <div className="panel-heading">
         <div><span className="eyebrow">Durable queue</span><h3>识别队列</h3></div>
-        <span className="badge">{completed} / {props.queue.items.length}</span>
+        <span className="badge">{engineLabels[props.queue.engine]} · {completed} / {props.queue.items.length}</span>
       </div>
       <div className="ocr-queue-list">
         {props.queue.items.map((item, index) => (

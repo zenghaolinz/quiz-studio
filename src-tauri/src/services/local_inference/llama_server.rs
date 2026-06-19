@@ -104,6 +104,7 @@ impl Default for ServerState {
 
 pub struct LlamaServerBackend {
     executable: PathBuf,
+    runtime_dir: Option<PathBuf>,
     options: ServerOptions,
     spawner: Arc<dyn ProcessSpawner>,
     client: reqwest::Client,
@@ -113,6 +114,15 @@ pub struct LlamaServerBackend {
 impl LlamaServerBackend {
     pub fn with_spawner(
         executable: PathBuf,
+        options: ServerOptions,
+        spawner: Arc<dyn ProcessSpawner>,
+    ) -> AppResult<Self> {
+        Self::with_runtime(executable, None, options, spawner)
+    }
+
+    pub fn with_runtime(
+        executable: PathBuf,
+        runtime_dir: Option<PathBuf>,
         options: ServerOptions,
         spawner: Arc<dyn ProcessSpawner>,
     ) -> AppResult<Self> {
@@ -127,6 +137,7 @@ impl LlamaServerBackend {
         }
         Ok(Self {
             executable,
+            runtime_dir,
             options,
             spawner,
             client: reqwest::Client::builder().build()?,
@@ -225,7 +236,7 @@ impl LocalInferenceBackend for LlamaServerBackend {
             return Err(AppError::NotFound("本地模型或 mmproj 文件不存在".into()));
         }
         let port = self.choose_port()?;
-        let command = build_server_command(&ServerLaunchConfig {
+        let mut command = build_server_command(&ServerLaunchConfig {
             executable: self.executable.clone(),
             model_path: model.model_path.clone(),
             mmproj_path: model.mmproj_path.clone(),
@@ -233,6 +244,9 @@ impl LocalInferenceBackend for LlamaServerBackend {
             context_size: self.options.context_size,
             gpu_layers: self.options.gpu_layers,
         })?;
+        if let Some(runtime_dir) = &self.runtime_dir {
+            command = command.current_dir(runtime_dir.clone());
+        }
         let endpoint = format!("http://127.0.0.1:{port}");
         let mut state = self.state.lock().await;
         state.process.start(self.spawner.as_ref(), &command)?;

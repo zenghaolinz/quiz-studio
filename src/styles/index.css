@@ -200,7 +200,7 @@ input:focus, textarea:focus { border-color: #8290e3; box-shadow: 0 0 0 3px rgba(
 .ocr-grid { display: grid; grid-template-columns: 390px minmax(0, 1fr); gap: 22px; }
 .form-stack { display: grid; gap: 14px; }
 .field-label { display: grid; gap: 7px; color: #555e72; font-size: 12px; font-weight: 650; }
-.segmented-control { display: grid; grid-template-columns: 1fr 1fr; background: #eef1f7; padding: 4px; border-radius: 12px; }
+.segmented-control { display: grid; grid-template-columns: repeat(3, 1fr); background: #eef1f7; padding: 4px; border-radius: 12px; }
 .segmented-control button { border: 0; border-radius: 9px; background: transparent; padding: 9px; color: var(--muted); }
 .segmented-control button.active { background: white; color: #3244b0; box-shadow: 0 5px 14px rgba(33,42,75,.08); font-weight: 650; }
 .drop-zone { min-height: 150px; border: 1.5px dashed #cbd2e2; border-radius: 16px; background: #fafbfe; display: grid; place-items: center; align-content: center; gap: 7px; text-align: center; color: var(--muted); }

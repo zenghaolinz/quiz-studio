@@ -10,6 +10,7 @@ use crate::error::{AppError, AppResult};
 pub struct ProcessCommand {
     pub program: PathBuf,
     pub args: Vec<OsString>,
+    pub current_dir: Option<PathBuf>,
 }
 
 impl ProcessCommand {
@@ -17,11 +18,17 @@ impl ProcessCommand {
         Self {
             program,
             args: Vec::new(),
+            current_dir: None,
         }
     }
 
     pub fn arg(mut self, value: impl Into<OsString>) -> Self {
         self.args.push(value.into());
+        self
+    }
+
+    pub fn current_dir(mut self, path: PathBuf) -> Self {
+        self.current_dir = Some(path);
         self
     }
 
@@ -52,6 +59,9 @@ impl ProcessSpawner for SystemProcessSpawner {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        if let Some(current_dir) = &command.current_dir {
+            process.current_dir(current_dir);
+        }
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -163,6 +173,16 @@ mod tests {
                 OsString::from("--model"),
                 OsString::from("C:\\models\\name with spaces.gguf")
             ]
+        );
+    }
+
+    #[test]
+    fn command_carries_the_runtime_library_directory() {
+        let command = ProcessCommand::new(PathBuf::from("llama-server.exe"))
+            .current_dir(PathBuf::from("resources/llama-runtime/target"));
+        assert_eq!(
+            command.current_dir,
+            Some(PathBuf::from("resources/llama-runtime/target"))
         );
     }
 

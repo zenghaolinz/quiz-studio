@@ -1,4 +1,4 @@
-export type OcrQueueEngine = "tesseract" | "glm";
+export type OcrQueueEngine = "tesseract" | "glm" | "local_glm";
 export type OcrQueueStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
 export interface OcrQueueItem {

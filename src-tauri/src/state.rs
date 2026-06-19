@@ -93,12 +93,17 @@ pub struct AppState {
     pub assets: AssetStore,
     pub ocr_tasks: OcrTaskRegistry,
     pub model_manager: Arc<local_inference::manager::ModelManager>,
+    pub local_ocr_sessions: local_inference::session::LocalOcrSessionRegistry,
     #[allow(dead_code)] // Read by the local OCR command layer in Task 8.
     pub local_inference: Option<Arc<dyn local_inference::backend::LocalInferenceBackend>>,
 }
 
 impl AppState {
-    pub fn new(database: Database, app_data_dir: std::path::PathBuf) -> AppResult<Self> {
+    pub fn new(
+        database: Database,
+        app_data_dir: std::path::PathBuf,
+        local_backend: Option<Arc<dyn local_inference::backend::LocalInferenceBackend>>,
+    ) -> AppResult<Self> {
         local_inference::bundled_catalog()?;
         let model_manager = Arc::new(local_inference::manager::ModelManager::new(
             database.clone(),
@@ -114,7 +119,8 @@ impl AppState {
             assets: AssetStore::new(app_data_dir),
             ocr_tasks: OcrTaskRegistry::default(),
             model_manager,
-            local_inference: None,
+            local_ocr_sessions: local_inference::session::LocalOcrSessionRegistry::default(),
+            local_inference: local_backend,
         })
     }
 }

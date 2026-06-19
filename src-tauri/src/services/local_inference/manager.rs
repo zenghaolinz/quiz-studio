@@ -16,9 +16,10 @@ use crate::{
     error::{AppError, AppResult},
     models::{ModelDownloadFileInput, ModelInstallationInput},
     services::local_inference::{
+        backend::InstalledModel,
         bundled_catalog,
         download::{download, verify_file, DownloadProgress, DownloadRequest},
-        manifest::{ModelCatalog, ModelManifest},
+        manifest::{ModelCatalog, ModelFileRole, ModelManifest},
         sources::download_url,
     },
 };
@@ -185,6 +186,42 @@ impl ModelManager {
             model_id: model_id.to_owned(),
             leases: self.leases.clone(),
         })
+    }
+
+    pub fn installed_model(&self, model_id: &str) -> AppResult<InstalledModel> {
+        let model = self
+            .catalog
+            .model(model_id)
+            .ok_or_else(|| AppError::NotFound(format!("model {model_id}")))?;
+        let installation = self
+            .database
+            .get_model_installation(model_id)?
+            .filter(|value| value.status == "ready")
+            .ok_or_else(|| AppError::Runtime(format!("model {model_id} is not ready")))?;
+        if installation.revision.trim().is_empty() {
+            return Err(AppError::Runtime(format!("model {model_id} is not ready")));
+        }
+        let model_root = self.models_root.join(model_id);
+        let model_path = model_root.join(
+            &model
+                .file(ModelFileRole::Model)
+                .ok_or_else(|| {
+                    AppError::InvalidConfig("model file is missing from manifest".into())
+                })?
+                .path,
+        );
+        let mmproj_path = model_root.join(
+            &model
+                .file(ModelFileRole::Mmproj)
+                .ok_or_else(|| {
+                    AppError::InvalidConfig("mmproj file is missing from manifest".into())
+                })?
+                .path,
+        );
+        if !model_path.is_file() || !mmproj_path.is_file() {
+            return Err(AppError::Runtime(format!("model {model_id} is not ready")));
+        }
+        InstalledModel::new(model_id, model_path, mmproj_path)
     }
 
     pub fn list_models(&self) -> AppResult<Vec<LocalModelStatus>> {
@@ -664,6 +701,13 @@ mod tests {
         assert!(model_dir.exists());
         drop(lease);
         assert!(manager.remove("glm-ocr-q8").unwrap());
+    }
+
+    #[test]
+    fn local_runtime_preflight_rejects_an_uninstalled_model() {
+        let (manager, _, _) = manager();
+        let error = manager.installed_model("glm-ocr-q8").unwrap_err();
+        assert!(error.to_string().contains("not ready"));
     }
 
     #[test]

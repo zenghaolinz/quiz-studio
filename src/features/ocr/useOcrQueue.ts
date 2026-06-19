@@ -15,6 +15,7 @@ import {
 } from "./ocrQueue";
 import { disposeTesseractWorker, recognizeWithTesseract } from "./tesseractEngine";
 import { expandOcrFiles } from "./pdfPages";
+import { beginLocalOcrQueue, finishLocalOcrQueue, runLocalGlmOcr } from "./localGlmApi";
 
 export function useOcrQueue() {
   const [queue, setQueue] = useState<OcrQueue | null>(null);
@@ -57,6 +58,9 @@ export function useOcrQueue() {
     if (current.engine === "glm") {
       return runGlmOcr(current.providerId, sourceDataUrl, item.sourceName, undefined, item.id);
     }
+    if (current.engine === "local_glm") {
+      return runLocalGlmOcr(current.id, item.id, sourceDataUrl, item.sourceName);
+    }
     const result = await recognizeWithTesseract(sourceDataUrl, { onProgress: setProgress });
     try {
       Object.assign(result, await persistLocalOcrArtifacts(sourceDataUrl, item.sourceName, result));
@@ -74,6 +78,9 @@ export function useOcrQueue() {
     cancelRequested.current = false;
     let current = sourceQueue;
     try {
+      if (current.engine === "local_glm") {
+        await beginLocalOcrQueue(current.id, current.providerId);
+      }
       for (const item of current.items) {
         if (pauseRequested.current || cancelRequested.current) break;
         if (item.status !== "pending" && item.status !== "failed") continue;
@@ -97,7 +104,12 @@ export function useOcrQueue() {
         activeItem.current = null;
         setProgress(null);
       }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
+      if (sourceQueue.engine === "local_glm") {
+        await finishLocalOcrQueue(sourceQueue.id).catch(() => false);
+      }
       activeItem.current = null;
       setRunning(false);
       setQueue(loadOcrQueue());
@@ -113,7 +125,7 @@ export function useOcrQueue() {
     pauseRequested.current = true;
     const active = activeItem.current;
     if (active) {
-      if (queue?.engine === "glm") await cancelGlmOcr(active.id).catch(() => false);
+      if (queue?.engine === "glm" || queue?.engine === "local_glm") await cancelGlmOcr(active.id).catch(() => false);
       else await disposeTesseractWorker().catch(() => undefined);
     }
     let current = loadOcrQueue();

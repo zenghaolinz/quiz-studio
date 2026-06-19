@@ -4,6 +4,7 @@ export const ocrEngineKindSchema = z.enum([
   "tesseract_builtin",
   "glm_sdk",
   "glm_openai_compatible",
+  "local_glm_llama_cpp",
 ]);
 
 export type OcrEngineKind = z.infer<typeof ocrEngineKindSchema>;
