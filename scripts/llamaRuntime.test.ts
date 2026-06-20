@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest"
+import { readFile } from "node:fs/promises"
 
-import { LLAMA_RELEASE, runtimeAssetForTarget } from "./fetch-llama-runtime.mjs"
+import {
+  LLAMA_RELEASE,
+  runtimeAssetForTarget,
+  runtimeTargetForHost,
+} from "./fetch-llama-runtime.mjs"
 import {
   baseNames,
   parseChecksumManifest,
@@ -9,6 +14,13 @@ import {
 } from "./verify-llama-runtime.mjs"
 
 describe("pinned llama.cpp runtime artifacts", () => {
+  test("keeps the optional runtime out of Tauri externalBin requirements", async () => {
+    const config = JSON.parse(await readFile("src-tauri/tauri.conf.json", "utf8"))
+
+    expect(config.bundle.externalBin).toBeUndefined()
+    expect(config.bundle.resources).toContain("resources/llama-runtime/")
+  })
+
   test("maps supported Rust target triples to b9716 CPU archives", () => {
     expect(LLAMA_RELEASE).toBe("b9716")
     expect(runtimeAssetForTarget("x86_64-pc-windows-msvc")).toMatchObject({
@@ -19,6 +31,13 @@ describe("pinned llama.cpp runtime artifacts", () => {
       "llama-b9716-bin-macos-arm64.tar.gz",
     )
     expect(() => runtimeAssetForTarget("wasm32-unknown-unknown")).toThrow(/unsupported/i)
+  })
+
+  test("maps desktop host platform and architecture to a Rust target", () => {
+    expect(runtimeTargetForHost("win32", "x64")).toBe("x86_64-pc-windows-msvc")
+    expect(runtimeTargetForHost("darwin", "arm64")).toBe("aarch64-apple-darwin")
+    expect(runtimeTargetForHost("linux", "x64")).toBe("x86_64-unknown-linux-gnu")
+    expect(() => runtimeTargetForHost("win32", "ia32")).toThrow(/unsupported/i)
   })
 
   test("parses strict repository-owned checksums", () => {

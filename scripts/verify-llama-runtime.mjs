@@ -72,15 +72,6 @@ if (isMain) {
   const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
   const resourceRoot = join(repositoryRoot, "src-tauri", "resources", "llama-runtime", target)
   const resourceFiles = await listFiles(resourceRoot)
-  const serverName = target.includes("windows") ? "llama-server.exe" : "llama-server"
-  const suffix = target.includes("windows") ? ".exe" : ""
-  const preparedServer = join(
-    repositoryRoot,
-    "src-tauri",
-    "binaries",
-    `llama-server-${target}${suffix}`,
-  )
-  await stat(preparedServer)
-  verifyRuntimeFiles([serverName, ...baseNames(resourceFiles)], target)
+  verifyRuntimeFiles(baseNames(resourceFiles), target)
   process.stdout.write(`Verified prepared llama.cpp runtime for ${target}\n`)
 }

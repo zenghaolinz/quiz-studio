@@ -41,6 +41,20 @@ const ASSETS = {
   ],
 }
 
+export function runtimeTargetForHost(platform = process.platform, architecture = process.arch) {
+  const targets = {
+    "win32:x64": "x86_64-pc-windows-msvc",
+    "win32:arm64": "aarch64-pc-windows-msvc",
+    "darwin:x64": "x86_64-apple-darwin",
+    "darwin:arm64": "aarch64-apple-darwin",
+    "linux:x64": "x86_64-unknown-linux-gnu",
+    "linux:arm64": "aarch64-unknown-linux-gnu",
+  }
+  const target = targets[`${platform}:${architecture}`]
+  if (!target) throw new Error(`Unsupported llama.cpp runtime host: ${platform}/${architecture}`)
+  return target
+}
+
 export function runtimeAssetForTarget(target) {
   const value = ASSETS[target]
   if (!value) throw new Error(`Unsupported llama.cpp runtime target: ${target}`)
@@ -72,8 +86,16 @@ export async function prepareRuntime(target, repositoryRoot = resolve(dirname(fi
   const archivePath = join(cache, asset.archive)
   const extracted = join(cache, "extracted")
   await mkdir(cache, { recursive: true })
-  await download(asset.url, archivePath)
-  if ((await sha256File(archivePath)) !== asset.sha256) throw new Error("Runtime checksum mismatch")
+  let cachedArchiveIsValid = false
+  try {
+    cachedArchiveIsValid = (await sha256File(archivePath)) === asset.sha256
+  } catch {
+    // The first preparation has no cached archive.
+  }
+  if (!cachedArchiveIsValid) {
+    await download(asset.url, archivePath)
+    if ((await sha256File(archivePath)) !== asset.sha256) throw new Error("Runtime checksum mismatch")
+  }
 
   const entries = runTar(["-tf", archivePath]).split(/\r?\n/u).filter(Boolean)
   validateArchiveEntries(entries)
@@ -83,31 +105,18 @@ export async function prepareRuntime(target, repositoryRoot = resolve(dirname(fi
   const files = await listFiles(extracted)
   verifyRuntimeFiles(files, target)
 
-  const serverName = target.includes("windows") ? "llama-server.exe" : "llama-server"
-  const server = files.find((file) => basename(file) === serverName)
-  const binarySuffix = target.includes("windows") ? ".exe" : ""
-  const binaryDestination = join(
-    repositoryRoot,
-    "src-tauri",
-    "binaries",
-    `llama-server-${target}${binarySuffix}`,
-  )
-  await mkdir(dirname(binaryDestination), { recursive: true })
-  await cp(join(extracted, server), binaryDestination)
-
   const resourceDestination = join(repositoryRoot, "src-tauri", "resources", "llama-runtime", target)
   await rm(resourceDestination, { recursive: true, force: true })
   await mkdir(resourceDestination, { recursive: true })
-  for (const file of files.filter((file) => file !== server)) {
+  for (const file of files) {
     await cp(join(extracted, file), join(resourceDestination, basename(file)))
   }
-  return { target, binaryDestination, resourceDestination }
+  return { target, resourceDestination }
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 if (isMain) {
-  const target = process.argv[2]
-  if (!target) throw new Error("Usage: node scripts/fetch-llama-runtime.mjs <rust-target-triple>")
+  const target = process.argv[2] || runtimeTargetForHost()
   const prepared = await prepareRuntime(target)
   process.stdout.write(`Prepared llama.cpp ${LLAMA_RELEASE} for ${prepared.target}\n`)
 }

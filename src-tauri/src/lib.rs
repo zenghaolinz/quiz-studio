@@ -119,23 +119,20 @@ fn find_llama_runtime() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
     };
     let target = tauri::utils::platform::target_triple().ok()?;
     let executable_root = std::env::current_exe().ok()?.parent()?.to_owned();
-    let installed_executable = executable_root.join(executable_name);
     let installed_runtime = executable_root
         .join("resources")
         .join("llama-runtime")
         .join(&target);
+    let installed_executable = installed_runtime.join(executable_name);
     if installed_executable.is_file() && installed_runtime.is_dir() {
         return Some((installed_executable, installed_runtime));
     }
     let manifest_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let development_executable = manifest_root.join("binaries").join(format!(
-        "llama-server-{target}{}",
-        if cfg!(windows) { ".exe" } else { "" }
-    ));
     let development_runtime = manifest_root
         .join("resources")
         .join("llama-runtime")
         .join(target);
+    let development_executable = development_runtime.join(executable_name);
     (development_executable.is_file() && development_runtime.is_dir())
         .then_some((development_executable, development_runtime))
 }

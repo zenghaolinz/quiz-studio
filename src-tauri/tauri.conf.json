@@ -4,9 +4,9 @@
   "version": "0.6.0",
   "identifier": "com.quizstudio.desktop",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "node scripts/fetch-llama-runtime.mjs && npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "node scripts/fetch-llama-runtime.mjs && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -28,9 +28,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": [
-      "binaries/llama-server"
-    ],
     "resources": [
       "resources/llama-runtime/"
     ],
